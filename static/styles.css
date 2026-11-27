@@ -147,8 +147,10 @@ tr:last-child td { border-bottom: 0; }
 .result-facts dt { color: var(--muted); font-size: .66rem; text-transform: uppercase; letter-spacing: .07em; }
 .result-facts dd { margin: 3px 0 0; font-weight: 800; }
 #component-results[aria-busy="true"], #ship-browser-dynamic[aria-busy="true"] { opacity: .55; transition: opacity .15s ease; }
-.public-home-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(285px, 330px); gap: 20px; align-items: start; }
+.public-home-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(285px, 330px); gap: 20px; align-items: start; margin-bottom: 20px; }
 .public-main-column { min-width: 0; }
+.public-home-layout .filter-panel { margin-bottom: 0; }
+#component-results { width: 100%; min-width: 0; }
 .home-watchlist-panel { position: sticky; top: 92px; padding: 20px; max-height: calc(100vh - 112px); overflow: auto; }
 .watchlist-panel-heading { display: flex; justify-content: space-between; gap: 14px; align-items: start; }
 .watchlist-panel-heading h2 { font-size: 1.25rem; }

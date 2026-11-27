@@ -15,7 +15,7 @@ A responsive Flask + SQLite web app for tracking salvaged ships and their recove
 - Quick Category buttons and clickable Size, Grade, and Spec filter chips, including unspecified values
 - Mobile component result cards with ship links and compact component details
 - Browser-local personal Component Watchlist with grouped-component pin/unpin controls, a live pinned count, and clear-all action
-- Responsive right-side pinned panel on the public home page; it moves below the Component Finder on smaller screens
+- Responsive right-side pinned panel beside the search controls; grouped results render below at full page width, and the panel moves below the finder on smaller screens
 - Dedicated Pinned Components view; pins are stored only in the user's browser with no account or database migration
 - Public ship directory with live ship/manufacturer search and A–Z navigation; selecting a ship shows every associated component
 - Public home view shows all component items by default and narrows the results through the finder, without exposing admin management controls

@@ -75,6 +75,24 @@
   </div>
 </section>
 
+{% if not session.get('is_admin') %}
+</div>
+<aside class="panel home-watchlist-panel" data-home-watchlist aria-labelledby="home-watchlist-heading">
+  <div class="watchlist-panel-heading">
+    <div><p class="eyebrow">Personal watchlist</p><h2 id="home-watchlist-heading">Pinned components</h2></div>
+    <span class="pin-count pin-count-large" data-pin-count aria-label="0 pinned components">0</span>
+  </div>
+  <p class="watchlist-local-note">Saved only in this browser.</p>
+  <div class="home-watchlist-items" data-home-watchlist-items></div>
+  <div class="watchlist-empty compact" data-home-watchlist-empty><p>No pinned components yet.</p></div>
+  <div class="watchlist-panel-actions">
+    <a href="{{ url_for('watchlist') }}">Open full watchlist</a>
+    <button type="button" class="danger-link" data-clear-pins>Clear all</button>
+  </div>
+</aside>
+</div>
+{% endif %}
+
 {% if session.get('is_admin') %}
 <section class="stats" aria-label="Inventory totals">
   <div><strong>{{ ships|length }}</strong><span>Ships</span></div>
@@ -190,24 +208,6 @@
   {% endif %}
 </section>
 </div>
-
-{% if not session.get('is_admin') %}
-</div>
-<aside class="panel home-watchlist-panel" data-home-watchlist aria-labelledby="home-watchlist-heading">
-  <div class="watchlist-panel-heading">
-    <div><p class="eyebrow">Personal watchlist</p><h2 id="home-watchlist-heading">Pinned components</h2></div>
-    <span class="pin-count pin-count-large" data-pin-count aria-label="0 pinned components">0</span>
-  </div>
-  <p class="watchlist-local-note">Saved only in this browser.</p>
-  <div class="home-watchlist-items" data-home-watchlist-items></div>
-  <div class="watchlist-empty compact" data-home-watchlist-empty><p>No pinned components yet.</p></div>
-  <div class="watchlist-panel-actions">
-    <a href="{{ url_for('watchlist') }}">Open full watchlist</a>
-    <button type="button" class="danger-link" data-clear-pins>Clear all</button>
-  </div>
-</aside>
-</div>
-{% endif %}
 
 {% if session.get('is_admin') %}
 <section class="panel" aria-labelledby="ships-heading">
