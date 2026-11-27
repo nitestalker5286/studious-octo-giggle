@@ -9,11 +9,13 @@ A responsive Flask + SQLite web app for tracking salvaged ships and their recove
 - Grade options: blank, A, B, C, D
 - Spec options: blank, MIL, CIV, CMP, IND, STH
 - Categories include Guns, Missiles, Radar, and the original ship-component categories
-- Clean public **Component Finder** with Component Name, Category, Size, Grade, and Spec fields
-- Partial Component Name matching plus exact Category, Size, Grade, and Spec filters
-- Public alphabetical ship directory; selecting a ship shows every component associated with it
+- Clean public **Component Finder** with live Component Name search
+- Quick Category buttons and clickable Size, Grade, and Spec filter chips, including unspecified values
+- Mobile component result cards with ship links and compact component details
+- Public ship directory with live ship/manufacturer search and A–Z navigation; selecting a ship shows every associated component
 - Search-only public home view: viewers see finder controls and matching results, not the full admin inventory lists
 - Admin inventory and ship-management views with full add, edit, and delete functionality
+- Admin **Save + Add Another** workflow that carries the selected ship and component defaults forward
 - Admin-only CSV export; exported rows include Ship Source and honor all active filters, including Size
 - Viewer/admin separation with password-protected changes
 - Automatic migration for the expected desktop SQLite schema and common legacy column names
@@ -121,6 +123,7 @@ The converter recognizes common legacy columns such as `ship_name`, `ship_source
 
 - The Gunicorn command intentionally uses **one worker** with multiple threads. Multiple independent workers are a poor fit for a small SQLite write workload.
 - SQLite uses WAL mode, foreign keys, a 30-second busy timeout, and one transaction per change.
+- Optional Grade and Spec values are stored as SQL `NULL`; startup migration safely upgrades older web schemas that incorrectly required empty strings.
 - A ship cannot be deleted while components still reference it.
 - Set a stable `SECRET_KEY`; changing it signs out all admin sessions.
 - Keep the Railway volume attached and back up `/data/salvage_tracker.db` periodically.

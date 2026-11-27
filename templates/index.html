@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Inventory · Salvage Tracker{% endblock %}
+{% block title %}Component Finder · Salvage Tracker{% endblock %}
 {% block content %}
 {% if session.get('is_admin') %}
 <section class="hero">
@@ -20,38 +20,58 @@
     <div><p class="eyebrow">Public search</p><h1 id="filter-heading" class="search-title">Component Finder</h1></div>
     {% if has_filters %}<a href="{{ url_for('index') }}">Clear filters</a>{% endif %}
   </div>
-  <form method="get" class="filter-grid">
-    <label class="field field-wide">
+  <form method="get" class="finder-search" data-live-component-search>
+    <input type="hidden" name="category" value="{{ filters.category }}">
+    <input type="hidden" name="size" value="{{ filters.size }}">
+    <input type="hidden" name="grade" value="{{ filters.grade }}">
+    <input type="hidden" name="spec" value="{{ filters.spec }}">
+    <label class="field">
       <span>Component Name</span>
-      <input type="search" name="q" value="{{ filters.q }}" placeholder="Enter a component name">
+      <div class="search-control">
+        <input type="search" name="q" value="{{ filters.q }}" placeholder="Start typing a component name" autocomplete="off" aria-describedby="live-search-status">
+        <button class="button" type="submit">Search</button>
+      </div>
     </label>
-    <label class="field">
-      <span>Category</span>
-      <select name="category">
-        <option value="">All categories</option>
-        {% for category in CATEGORY_OPTIONS %}<option {% if filters.category == category %}selected{% endif %}>{{ category }}</option>{% endfor %}
-      </select>
-    </label>
-    <label class="field">
-      <span>Size</span>
-      <input name="size" value="{{ filters.size }}" maxlength="20" placeholder="Any size">
-    </label>
-    <label class="field">
-      <span>Grade</span>
-      <select name="grade">
-        <option value="">All grades</option>
-        {% for grade in GRADE_OPTIONS %}<option {% if filters.grade == grade %}selected{% endif %}>{{ grade }}</option>{% endfor %}
-      </select>
-    </label>
-    <label class="field">
-      <span>Spec</span>
-      <select name="spec">
-        <option value="">All specs</option>
-        {% for spec in SPEC_OPTIONS %}<option {% if filters.spec == spec %}selected{% endif %}>{{ spec }}</option>{% endfor %}
-      </select>
-    </label>
-    <button class="button" type="submit">Search</button>
+    <span id="live-search-status" class="live-status" aria-live="polite">Search updates automatically as you type.</span>
   </form>
+
+  <div class="quick-filter-group">
+    <span class="quick-filter-label">Category</span>
+    <span class="filter-hint">Quick category buttons</span>
+    <div class="filter-chips">
+      <a class="filter-chip {% if not filters.category %}active{% endif %}" href="{{ url_for('index', q=filters.q, size=filters.size, grade=filters.grade, spec=filters.spec) }}">All</a>
+      {% for category in CATEGORY_OPTIONS %}
+        <a class="filter-chip {% if filters.category == category %}active{% endif %}" href="{{ url_for('index', q=filters.q, category=category, size=filters.size, grade=filters.grade, spec=filters.spec) }}">{{ category }}</a>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="click-filter-grid">
+    <div class="quick-filter-group">
+      <span class="quick-filter-label">Size</span>
+      <div class="filter-chips compact">
+        <a class="filter-chip {% if not filters.size %}active{% endif %}" href="{{ url_for('index', q=filters.q, category=filters.category, grade=filters.grade, spec=filters.spec) }}">All</a>
+        <a class="filter-chip {% if filters.size == '__none__' %}active{% endif %}" href="{{ url_for('index', q=filters.q, category=filters.category, size='__none__', grade=filters.grade, spec=filters.spec) }}">None</a>
+        {% for size in size_options %}<a class="filter-chip {% if filters.size == size %}active{% endif %}" href="{{ url_for('index', q=filters.q, category=filters.category, size=size, grade=filters.grade, spec=filters.spec) }}">{{ size }}</a>{% endfor %}
+      </div>
+    </div>
+    <div class="quick-filter-group">
+      <span class="quick-filter-label">Grade</span>
+      <div class="filter-chips compact">
+        <a class="filter-chip {% if not filters.grade %}active{% endif %}" href="{{ url_for('index', q=filters.q, category=filters.category, size=filters.size, spec=filters.spec) }}">All</a>
+        <a class="filter-chip {% if filters.grade == '__none__' %}active{% endif %}" href="{{ url_for('index', q=filters.q, category=filters.category, size=filters.size, grade='__none__', spec=filters.spec) }}">None</a>
+        {% for grade in GRADE_OPTIONS %}<a class="filter-chip {% if filters.grade == grade %}active{% endif %}" href="{{ url_for('index', q=filters.q, category=filters.category, size=filters.size, grade=grade, spec=filters.spec) }}">{{ grade }}</a>{% endfor %}
+      </div>
+    </div>
+    <div class="quick-filter-group">
+      <span class="quick-filter-label">Spec</span>
+      <div class="filter-chips compact">
+        <a class="filter-chip {% if not filters.spec %}active{% endif %}" href="{{ url_for('index', q=filters.q, category=filters.category, size=filters.size, grade=filters.grade) }}">All</a>
+        <a class="filter-chip {% if filters.spec == '__none__' %}active{% endif %}" href="{{ url_for('index', q=filters.q, category=filters.category, size=filters.size, grade=filters.grade, spec='__none__') }}">None</a>
+        {% for spec in SPEC_OPTIONS %}<a class="filter-chip {% if filters.spec == spec %}active{% endif %}" href="{{ url_for('index', q=filters.q, category=filters.category, size=filters.size, grade=filters.grade, spec=spec) }}">{{ spec }}</a>{% endfor %}
+      </div>
+    </div>
+  </div>
 </section>
 
 {% if session.get('is_admin') %}
@@ -62,6 +82,7 @@
 </section>
 {% endif %}
 
+<div id="component-results">
 {% if session.get('is_admin') or has_filters %}
 <section class="panel" aria-labelledby="components-heading">
   <div class="section-heading">
@@ -74,7 +95,7 @@
     {% endif %}
   </div>
   {% if components %}
-  <div class="table-wrap">
+  <div class="table-wrap {% if not session.get('is_admin') %}public-results-table{% endif %}">
     <table>
       <thead><tr><th>Component</th><th>Ship</th><th>Category</th><th>Size</th><th>Grade</th><th>Spec</th><th class="number">Qty</th>{% if session.get('is_admin') %}<th class="actions">Actions</th>{% endif %}</tr></thead>
       <tbody>
@@ -101,22 +122,30 @@
       </tbody>
     </table>
   </div>
+  {% if not session.get('is_admin') %}
+  <div class="mobile-result-cards">
+    {% for component in components %}
+    <article class="result-card">
+      <div class="result-card-heading"><div><p class="eyebrow">{{ component.category }}</p><h3>{{ component.name }}</h3></div><strong class="result-qty">×{{ component.quantity }}</strong></div>
+      <a class="result-ship" href="{{ url_for('public_ship_detail', ship_id=component.ship_id) }}">{{ component.ship_name }}</a>
+      {% if component.manufacturer or component.source %}<p class="result-subtext">{{ component.manufacturer }}{% if component.manufacturer and component.source %} · {% endif %}{% if component.source %}{{ component.source }}{% endif %}</p>{% endif %}
+      <dl class="result-facts"><div><dt>Size</dt><dd>{{ component.size or '—' }}</dd></div><div><dt>Grade</dt><dd>{{ component.grade or '—' }}</dd></div><div><dt>Spec</dt><dd>{{ component.spec or '—' }}</dd></div></dl>
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
   {% else %}
     <div class="empty-state"><h3>No matching components</h3><p>Try changing or clearing one of the search fields.</p></div>
   {% endif %}
 </section>
 {% else %}
-<section class="search-prompt" aria-live="polite">
-  <p>Enter a component name or use one of the filters above to search the salvage database.</p>
-</section>
+<section class="search-prompt" aria-live="polite"><p>Start typing a component name or choose a filter above.</p></section>
 {% endif %}
+</div>
 
 {% if session.get('is_admin') %}
 <section class="panel" aria-labelledby="ships-heading">
-  <div class="section-heading">
-    <div><p class="eyebrow">Source ships</p><h2 id="ships-heading">Ships</h2></div>
-    <a class="button button-small" href="{{ url_for('ship_new') }}">Add ship</a>
-  </div>
+  <div class="section-heading"><div><p class="eyebrow">Source ships</p><h2 id="ships-heading">Ships</h2></div><a class="button button-small" href="{{ url_for('ship_new') }}">Add ship</a></div>
   {% if ships %}
   <div class="ship-grid">
     {% for ship in ships %}
@@ -124,20 +153,11 @@
         <div><h3>{{ ship.name }}</h3><p>{{ ship.manufacturer or 'Manufacturer not set' }}</p></div>
         {% if ship.source %}<p class="source"><span>Ship source</span>{{ ship.source }}</p>{% endif %}
         <div class="ship-meta"><span>{{ ship.component_records }} records</span><span>{{ ship.component_units }} units</span></div>
-        <div class="card-actions">
-          <a href="{{ url_for('component_new', ship_id=ship.id) }}">Add component</a>
-          <a href="{{ url_for('ship_edit', ship_id=ship.id) }}">Edit</a>
-          <form action="{{ url_for('ship_delete', ship_id=ship.id) }}" method="post" class="inline-form">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="danger-link" type="submit">Delete</button>
-          </form>
-        </div>
+        <div class="card-actions"><a href="{{ url_for('component_new', ship_id=ship.id) }}">Add component</a><a href="{{ url_for('ship_edit', ship_id=ship.id) }}">Edit</a><form action="{{ url_for('ship_delete', ship_id=ship.id) }}" method="post" class="inline-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="danger-link" type="submit">Delete</button></form></div>
       </article>
     {% endfor %}
   </div>
-  {% else %}
-    <div class="empty-state"><h3>No ships yet</h3><p>Add a ship to start tracking recovered components.</p></div>
-  {% endif %}
+  {% else %}<div class="empty-state"><h3>No ships yet</h3><p>Add a ship to start tracking recovered components.</p></div>{% endif %}
 </section>
 {% endif %}
 {% endblock %}

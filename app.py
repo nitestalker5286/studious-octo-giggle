@@ -174,6 +174,16 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                 ORDER BY s.name COLLATE NOCASE
                 """
             ).fetchall()
+            size_options = [
+                row["size"]
+                for row in connection.execute(
+                    """
+                    SELECT DISTINCT size FROM components
+                    WHERE size IS NOT NULL AND TRIM(size) <> ''
+                    ORDER BY CAST(size AS INTEGER), size COLLATE NOCASE
+                    """
+                ).fetchall()
+            ]
         is_admin = bool(session.get("is_admin"))
         components = (
             inventory_rows(app.config["DATABASE_PATH"], filters)
@@ -187,24 +197,46 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             components=components,
             filters=filters,
             has_filters=has_filters,
+            size_options=size_options,
             total_units=total_units,
             admin_configured=bool(app.config["ADMIN_PASSWORD"]),
         )
 
     @app.get("/ships")
     def public_ships() -> str:
+        query = request.args.get("q", "").strip()
+        letter = request.args.get("letter", "").strip().upper()
+        if letter and (len(letter) != 1 or letter not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"):
+            letter = ""
+        clauses: list[str] = []
+        values: list[str] = []
+        if query:
+            clauses.append("(s.name LIKE ? COLLATE NOCASE OR s.manufacturer LIKE ? COLLATE NOCASE)")
+            values.extend([f"%{query}%", f"%{query}%"])
+        if letter:
+            clauses.append("UPPER(SUBSTR(TRIM(s.name), 1, 1)) = ?")
+            values.append(letter)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         with connect(app.config["DATABASE_PATH"]) as connection:
             ships = connection.execute(
-                """
+                f"""
                 SELECT s.id, s.name, s.manufacturer, s.source,
                        COUNT(c.id) AS component_records,
                        COALESCE(SUM(c.quantity), 0) AS component_units
                 FROM ships s LEFT JOIN components c ON c.ship_id = s.id
+                {where}
                 GROUP BY s.id, s.name, s.manufacturer, s.source
                 ORDER BY s.name COLLATE NOCASE, s.id
-                """
+                """,
+                values,
             ).fetchall()
-        return render_template("public_ships.html", ships=ships)
+        return render_template(
+            "public_ships.html",
+            ships=ships,
+            query=query,
+            active_letter=letter,
+            alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+        )
 
     @app.get("/ships/<int:ship_id>")
     def public_ship_detail(ship_id: int) -> str:
@@ -344,6 +376,17 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                     )
                 after_change()
                 flash(f"Component “{values[1]}” added.", "success")
+                if request.form.get("save_action") == "add_another":
+                    return redirect(
+                        url_for(
+                            "component_new",
+                            ship_id=values[0],
+                            category=values[2],
+                            size=values[3],
+                            grade=values[4] or "",
+                            spec=values[5] or "",
+                        )
+                    )
                 return redirect(url_for("index"))
             except ValueError as error:
                 flash(str(error), "error")
@@ -380,7 +423,9 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             "component_form.html", component=component, ships=ships, selected_ship_id=""
         )
 
-    def validate_component_form(database_path: str) -> tuple[int, str, str, str, str, str, int]:
+    def validate_component_form(
+        database_path: str,
+    ) -> tuple[int, str, str, str, str | None, str | None, int]:
         try:
             ship_id = int(request.form.get("ship_id", ""))
         except ValueError as error:
@@ -393,12 +438,14 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         if category not in CATEGORY_OPTIONS:
             raise ValueError("Select a valid component category.")
         size = form_text("size", 20)
-        grade = request.form.get("grade", "")
-        spec = request.form.get("spec", "")
-        if grade and grade not in GRADE_OPTIONS:
+        grade_value = request.form.get("grade", "").strip()
+        spec_value = request.form.get("spec", "").strip()
+        if grade_value and grade_value not in GRADE_OPTIONS:
             raise ValueError("Select a valid grade or leave it blank.")
-        if spec and spec not in SPEC_OPTIONS:
+        if spec_value and spec_value not in SPEC_OPTIONS:
             raise ValueError("Select a valid spec or leave it blank.")
+        grade = grade_value or None
+        spec = spec_value or None
         try:
             quantity = int(request.form.get("quantity", "1"))
         except ValueError as error:

@@ -90,6 +90,9 @@ def test_health_and_empty_viewer_search_page(client):
     assert b">Grade<" in response.data
     assert b">Spec<" in response.data
     assert b">Ship<" not in response.data
+    assert b"Quick category buttons" in response.data
+    assert b"data-live-component-search" in response.data
+    assert b"app.js" in response.data
 
 
 def test_viewer_cannot_modify_and_csrf_is_enforced(client):
@@ -133,8 +136,8 @@ def test_admin_crud_search_filters_and_optional_fields(client, app, tmp_path):
 
     with connect(app.config["DATABASE_PATH"]) as connection:
         radar = connection.execute("SELECT * FROM components WHERE name = 'Surveyor Array'").fetchone()
-        assert radar["grade"] == ""
-        assert radar["spec"] == ""
+        assert radar["grade"] is None
+        assert radar["spec"] is None
 
     snapshot = tmp_path / "inventory.csv"
     assert snapshot.exists()
@@ -195,6 +198,15 @@ def test_public_ship_directory_is_alphabetical_and_ship_page_lists_its_component
     assert directory.status_code == 200
     assert directory.data.index(b"Arrow") < directory.data.index(b"Cutlass Black") < directory.data.index(b"Hammerhead")
     assert f'/ships/{cutlass_id}'.encode() in directory.data
+    assert b"Search ships" in directory.data
+    assert b"Browse ships by first letter" in directory.data
+
+    searched = client.get("/ships?q=drake")
+    assert b"Cutlass Black" in searched.data
+    assert b"Hammerhead" not in searched.data
+    letter = client.get("/ships?letter=H")
+    assert b"Hammerhead" in letter.data
+    assert b"Cutlass Black" not in letter.data
 
     cutlass = client.get(f"/ships/{cutlass_id}")
     assert cutlass.status_code == 200
@@ -216,6 +228,34 @@ def test_csv_export_has_ship_source_and_current_filters(client):
     rows = list(csv.reader(io.StringIO(response.data.decode("utf-8-sig"))))
     assert rows[0] == ["Ship", "Manufacturer", "Ship Source", "Component", "Category", "Size", "Grade", "Spec", "Qty"]
     assert rows[1] == ["Hammerhead", "Aegis", "ERT contracts", "FR-86", "Shield Generator", "3", "A", "MIL", "2"]
+
+
+def test_save_and_add_another_preserves_defaults_and_stores_optional_nulls(client, app):
+    login(client)
+    post(client, "/ships/new", {"name": "Reclaimer", "manufacturer": "Aegis", "source": ""})
+    response = post(
+        client,
+        "/components/new",
+        {
+            "ship_id": "1",
+            "name": "Avalanche",
+            "category": "Cooler",
+            "size": "3",
+            "grade": "",
+            "spec": "",
+            "quantity": "1",
+            "save_action": "add_another",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    assert "/components/new" in response.headers["Location"]
+    assert "ship_id=1" in response.headers["Location"]
+    assert "category=Cooler" in response.headers["Location"]
+    with connect(app.config["DATABASE_PATH"]) as connection:
+        row = connection.execute("SELECT grade, spec FROM components WHERE name = 'Avalanche'").fetchone()
+        assert row["grade"] is None
+        assert row["spec"] is None
 
 
 def test_ship_with_components_cannot_be_deleted(client):
@@ -253,3 +293,42 @@ def test_legacy_schema_migration(tmp_path):
         assert component["category"] == "Quantum Drive"
         assert component["quantity"] == 1
         assert component["spec"] == "CMP"
+
+
+def test_existing_not_null_grade_spec_schema_is_migrated_without_data_loss(tmp_path):
+    database_path = tmp_path / "old_web.db"
+    connection = sqlite3.connect(database_path)
+    connection.executescript(
+        """
+        CREATE TABLE ships (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+            manufacturer TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO ships(id, name) VALUES (1, 'Hammerhead');
+        CREATE TABLE components (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, ship_id INTEGER NOT NULL,
+            name TEXT NOT NULL, category TEXT NOT NULL, size TEXT NOT NULL DEFAULT '',
+            grade TEXT NOT NULL DEFAULT '', spec TEXT NOT NULL DEFAULT '',
+            quantity INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO components(id, ship_id, name, category, size, grade, spec, quantity)
+        VALUES (9, 1, 'FR-86', 'Shield Generator', '3', '', '', 2);
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    initialize_database(str(database_path))
+    with connect(str(database_path)) as migrated:
+        row = migrated.execute("SELECT * FROM components WHERE id = 9").fetchone()
+        info = {r["name"]: r for r in migrated.execute("PRAGMA table_info(components)")}
+        assert row["name"] == "FR-86"
+        assert row["quantity"] == 2
+        assert row["grade"] is None
+        assert row["spec"] is None
+        assert info["grade"]["notnull"] == 0
+        assert info["spec"]["notnull"] == 0

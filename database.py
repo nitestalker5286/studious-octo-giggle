@@ -48,6 +48,45 @@ def _add_column(connection: sqlite3.Connection, table: str, name: str, definitio
         connection.execute(f'ALTER TABLE "{table}" ADD COLUMN "{name}" {definition}')
 
 
+def _make_optional_component_fields_nullable(connection: sqlite3.Connection) -> None:
+    """Rebuild older web schemas whose Grade/Spec columns were incorrectly NOT NULL."""
+    info = {row["name"]: row for row in connection.execute('PRAGMA table_info("components")')}
+    if not any(info.get(name) and info[name]["notnull"] for name in ("grade", "spec")):
+        return
+
+    connection.execute(
+        """
+        CREATE TABLE components_nullable (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ship_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            category TEXT NOT NULL,
+            size TEXT NOT NULL DEFAULT '',
+            grade TEXT,
+            spec TEXT,
+            quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (ship_id) REFERENCES ships(id) ON DELETE RESTRICT
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO components_nullable
+            (id, ship_id, name, category, size, grade, spec, quantity, created_at, updated_at)
+        SELECT id, ship_id, name, category, COALESCE(size, ''),
+               NULLIF(TRIM(grade), ''), NULLIF(TRIM(spec), ''),
+               CASE WHEN quantity IS NULL OR quantity < 1 THEN 1 ELSE quantity END,
+               COALESCE(NULLIF(created_at, ''), CURRENT_TIMESTAMP),
+               COALESCE(NULLIF(updated_at, ''), CURRENT_TIMESTAMP)
+        FROM components
+        """
+    )
+    connection.execute("DROP TABLE components")
+    connection.execute("ALTER TABLE components_nullable RENAME TO components")
+
+
 def initialize_database(database_path: str) -> None:
     """Create the schema and upgrade common desktop-tracker schemas in place."""
     with transaction(database_path) as connection:
@@ -71,8 +110,8 @@ def initialize_database(database_path: str) -> None:
                 name TEXT NOT NULL,
                 category TEXT NOT NULL,
                 size TEXT NOT NULL DEFAULT '',
-                grade TEXT NOT NULL DEFAULT '',
-                spec TEXT NOT NULL DEFAULT '',
+                grade TEXT,
+                spec TEXT,
                 quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -108,8 +147,8 @@ def initialize_database(database_path: str) -> None:
             ("name", "TEXT NOT NULL DEFAULT ''"),
             ("category", "TEXT NOT NULL DEFAULT 'Other'"),
             ("size", "TEXT NOT NULL DEFAULT ''"),
-            ("grade", "TEXT NOT NULL DEFAULT ''"),
-            ("spec", "TEXT NOT NULL DEFAULT ''"),
+            ("grade", "TEXT"),
+            ("spec", "TEXT"),
             ("quantity", "INTEGER NOT NULL DEFAULT 1"),
             ("created_at", "TEXT NOT NULL DEFAULT ''"),
             ("updated_at", "TEXT NOT NULL DEFAULT ''"),
@@ -130,8 +169,11 @@ def initialize_database(database_path: str) -> None:
                             f'UPDATE components SET quantity = "{legacy}" WHERE "{legacy}" IS NOT NULL AND CAST("{legacy}" AS INTEGER) > 0'
                         )
                     else:
+                        empty_condition = f'("{canonical}" IS NULL OR TRIM("{canonical}") = \'\')'
+                        if canonical == "category":
+                            empty_condition = f'({empty_condition} OR "{canonical}" = \'Other\')'
                         connection.execute(
-                            f'UPDATE components SET "{canonical}" = "{legacy}" WHERE ("{canonical}" IS NULL OR TRIM("{canonical}") = \'\') AND "{legacy}" IS NOT NULL'
+                            f'UPDATE components SET "{canonical}" = "{legacy}" WHERE {empty_condition} AND "{legacy}" IS NOT NULL'
                         )
                     break
 
@@ -151,11 +193,12 @@ def initialize_database(database_path: str) -> None:
                 )
                 break
 
+        _make_optional_component_fields_nullable(connection)
         connection.execute(
             "UPDATE components SET spec = 'CMP' WHERE UPPER(TRIM(spec)) IN ('COMP', 'CMP')"
         )
-        connection.execute("UPDATE components SET grade = NULL WHERE grade = ''")
-        connection.execute("UPDATE components SET spec = NULL WHERE spec = ''")
+        connection.execute("UPDATE components SET grade = NULL WHERE TRIM(COALESCE(grade, '')) = ''")
+        connection.execute("UPDATE components SET spec = NULL WHERE TRIM(COALESCE(spec, '')) = ''")
         connection.execute("UPDATE components SET quantity = 1 WHERE quantity IS NULL OR quantity < 1")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_ships_name_nocase ON ships(name COLLATE NOCASE)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_components_ship_id ON components(ship_id)")
@@ -182,7 +225,9 @@ def inventory_rows(database_path: str, filters: dict[str, str] | None = None) ->
         ("spec", "c.spec"),
     ):
         value = filters.get(key, "").strip()
-        if value:
+        if value == "__none__":
+            clauses.append(f"({column} IS NULL OR TRIM({column}) = '')")
+        elif value:
             clauses.append(f"{column} = ?")
             values.append(value)
 
@@ -226,5 +271,3 @@ def write_inventory_csv(database_path: str, output_path: str) -> None:
     finally:
         if os.path.exists(temporary_name):
             os.unlink(temporary_name)
-
-

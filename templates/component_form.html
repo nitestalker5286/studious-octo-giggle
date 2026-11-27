@@ -9,13 +9,17 @@
     <label class="field"><span>Ship <em>Required</em></span><select name="ship_id" required><option value="">Select a ship</option>{% for ship in ships %}<option value="{{ ship.id }}" {% if chosen_ship|string == ship.id|string %}selected{% endif %}>{{ ship.name }}</option>{% endfor %}</select></label>
     <label class="field"><span>Component name <em>Required</em></span><input name="name" maxlength="160" required value="{{ request.form.get('name', component.name if component else '') }}" placeholder="FR-86"></label>
     <div class="two-column">
-      <label class="field"><span>Category <em>Required</em></span>{% set chosen_category = request.form.get('category', component.category if component else '') %}<select name="category" required><option value="">Select a category</option>{% for category in CATEGORY_OPTIONS %}<option {% if chosen_category == category %}selected{% endif %}>{{ category }}</option>{% endfor %}</select></label>
-      <label class="field"><span>Size</span><input name="size" maxlength="20" value="{{ request.form.get('size', component.size if component else '') }}" placeholder="3"></label>
-      <label class="field"><span>Grade <small>Optional</small></span>{% set chosen_grade = request.form.get('grade', component.grade if component else '') %}<select name="grade"><option value="">No grade</option>{% for grade in GRADE_OPTIONS %}<option {% if chosen_grade == grade %}selected{% endif %}>{{ grade }}</option>{% endfor %}</select></label>
-      <label class="field"><span>Spec <small>Optional</small></span>{% set chosen_spec = request.form.get('spec', component.spec if component else '') %}<select name="spec"><option value="">No spec</option>{% for spec in SPEC_OPTIONS %}<option {% if chosen_spec == spec %}selected{% endif %}>{{ spec }}</option>{% endfor %}</select></label>
+      <label class="field"><span>Category <em>Required</em></span>{% set chosen_category = request.form.get('category', component.category if component else request.args.get('category', '')) %}<select name="category" required><option value="">Select a category</option>{% for category in CATEGORY_OPTIONS %}<option {% if chosen_category == category %}selected{% endif %}>{{ category }}</option>{% endfor %}</select></label>
+      <label class="field"><span>Size</span><input name="size" maxlength="20" value="{{ request.form.get('size', component.size if component else request.args.get('size', '')) }}" placeholder="3"></label>
+      <label class="field"><span>Grade <small>Optional</small></span>{% set chosen_grade = request.form.get('grade', component.grade if component else request.args.get('grade', '')) %}<select name="grade"><option value="">No grade</option>{% for grade in GRADE_OPTIONS %}<option {% if chosen_grade == grade %}selected{% endif %}>{{ grade }}</option>{% endfor %}</select></label>
+      <label class="field"><span>Spec <small>Optional</small></span>{% set chosen_spec = request.form.get('spec', component.spec if component else request.args.get('spec', '')) %}<select name="spec"><option value="">No spec</option>{% for spec in SPEC_OPTIONS %}<option {% if chosen_spec == spec %}selected{% endif %}>{{ spec }}</option>{% endfor %}</select></label>
       <label class="field"><span>Quantity <em>Required</em></span><input type="number" name="quantity" min="1" max="100000" required value="{{ request.form.get('quantity', component.quantity if component else 1) }}"></label>
     </div>
-    <div class="form-actions"><a class="button button-secondary" href="{{ url_for('index') }}">Cancel</a><button class="button" type="submit">{{ 'Save changes' if component else 'Add component' }}</button></div>
+    <div class="form-actions">
+      <a class="button button-secondary" href="{{ url_for('index') }}">Cancel</a>
+      {% if not component %}<button class="button button-secondary" type="submit" name="save_action" value="add_another">Save + Add Another</button>{% endif %}
+      <button class="button" type="submit">{{ 'Save changes' if component else 'Add component' }}</button>
+    </div>
   </form>
 </section>
 {% endblock %}
