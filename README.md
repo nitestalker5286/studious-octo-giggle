@@ -130,6 +130,7 @@ The converter recognizes common legacy columns such as `ship_name`, `ship_source
 
 ## Operational notes
 
+- The entire public and Admin interface uses the Industrial Salvage theme: `#0B1014` background, `#141C22` panels, amber `#F59E0B` actions, `#FBBF24` hover/highlight states, `#E5E7EB` primary text, and steel-gray secondary text and borders. The same palette applies to desktop and mobile layouts.
 - The Gunicorn command intentionally uses **one worker** with multiple threads. Multiple independent workers are a poor fit for a small SQLite write workload.
 - SQLite uses WAL mode, foreign keys, a 30-second busy timeout, and one transaction per change.
 - Optional Grade and Spec values are stored as SQL `NULL`; startup migration safely upgrades older web schemas that incorrectly required empty strings.
