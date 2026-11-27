@@ -173,14 +173,15 @@ def inventory_rows(database_path: str, filters: dict[str, str] | None = None) ->
         like = f"%{search}%"
         clauses.append(
             "(c.name LIKE ? COLLATE NOCASE OR c.category LIKE ? COLLATE NOCASE "
-            "OR s.name LIKE ? COLLATE NOCASE OR s.manufacturer LIKE ? COLLATE NOCASE "
-            "OR s.source LIKE ? COLLATE NOCASE)"
+            "OR c.size LIKE ? COLLATE NOCASE OR s.name LIKE ? COLLATE NOCASE "
+            "OR s.manufacturer LIKE ? COLLATE NOCASE OR s.source LIKE ? COLLATE NOCASE)"
         )
-        values.extend([like] * 5)
+        values.extend([like] * 6)
 
     for key, column in (
         ("ship_id", "c.ship_id"),
         ("category", "c.category"),
+        ("size", "c.size"),
         ("grade", "c.grade"),
         ("spec", "c.spec"),
     ):

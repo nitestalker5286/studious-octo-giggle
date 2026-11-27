@@ -41,7 +41,12 @@ h3 { letter-spacing: -.02em; }
 .filter-panel { padding: 24px; margin-bottom: 20px; }
 .section-heading { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 24px 24px 18px; }
 .filter-panel .section-heading { padding: 0 0 18px; }
-.filter-grid { display: grid; grid-template-columns: 2fr repeat(4, minmax(130px, 1fr)) auto; gap: 12px; align-items: end; }
+.search-title { font-size: clamp(2rem, 5vw, 3.5rem); margin-bottom: 0; }
+.result-count { color: var(--muted); font-size: .85rem; }
+.search-prompt { color: var(--muted); text-align: center; padding: 34px 20px 8px; }
+.search-prompt p { margin-bottom: 0; }
+.panel + .panel { margin-top: 20px; }
+.filter-grid { display: grid; grid-template-columns: 2fr repeat(5, minmax(110px, 1fr)) auto; gap: 12px; align-items: end; }
 .field { display: grid; gap: 7px; min-width: 0; }
 .field > span { color: var(--muted); font-size: .78rem; font-weight: 750; letter-spacing: .02em; }
 .field em { color: var(--accent); font-style: normal; font-size: .65rem; text-transform: uppercase; margin-left: 6px; }

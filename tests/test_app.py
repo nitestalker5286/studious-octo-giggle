@@ -75,11 +75,14 @@ def seed(client) -> None:
     assert b"FR-86" in response.data
 
 
-def test_health_and_empty_viewer_inventory(client):
+def test_health_and_empty_viewer_search_page(client):
     assert client.get("/health").get_json() == {"status": "ok"}
     response = client.get("/")
     assert response.status_code == 200
-    assert b"No components found" in response.data
+    assert b"Enter a component name" in response.data
+    assert b"Matching results" not in response.data
+    assert b"Recovered inventory" not in response.data
+    assert b"Source ships" not in response.data
     assert b"Add component" not in response.data
 
 
@@ -96,9 +99,16 @@ def test_admin_crud_search_filters_and_optional_fields(client, app, tmp_path):
     response = client.get("/?q=FR-86")
     assert b"FR-86" in response.data and b"Hammerhead" in response.data
     assert b"ERT contracts" in response.data
+    assert b"Recovered inventory" in response.data
+    assert b"Source ships" in response.data
+
+    # Size participates in both the broad global query and its own exact filter.
+    assert b"FR-86" in client.get("/?q=3").data
+    assert b"FR-86" in client.get("/?size=3").data
+    assert b"No matching components" in client.get("/?size=2").data
 
     response = client.get("/?category=Radar")
-    assert b"No components found" in response.data
+    assert b"No matching components" in response.data
 
     response = post(
         client,
@@ -129,9 +139,32 @@ def test_admin_crud_search_filters_and_optional_fields(client, app, tmp_path):
         assert connection.execute("SELECT 1 FROM components WHERE id = ?", (radar["id"],)).fetchone() is None
 
 
+def test_public_view_is_search_only_and_returns_matching_results(client):
+    seed(client)
+    post(client, "/admin/logout", {})
+
+    landing = client.get("/")
+    assert b"FR-86" not in landing.data
+    assert b"Recovered inventory" not in landing.data
+    assert b"Source ships" not in landing.data
+    assert b"Matching results" not in landing.data
+
+    results = client.get("/?size=3")
+    assert b"Matching results" in results.data
+    assert b"FR-86" in results.data
+    assert b"Hammerhead" in results.data
+    assert b"Recovered inventory" not in results.data
+    assert b"Source ships" not in results.data
+    assert b"Edit" not in results.data
+    assert b"Delete" not in results.data
+    export = client.get("/export.csv")
+    assert export.status_code == 302
+    assert "/admin/login" in export.headers["Location"]
+
+
 def test_csv_export_has_ship_source_and_current_filters(client):
     seed(client)
-    response = client.get("/export.csv?q=FR-86")
+    response = client.get("/export.csv?size=3")
     assert response.status_code == 200
     rows = list(csv.reader(io.StringIO(response.data.decode("utf-8-sig"))))
     assert rows[0] == ["Ship", "Manufacturer", "Ship Source", "Component", "Category", "Size", "Grade", "Spec", "Qty"]

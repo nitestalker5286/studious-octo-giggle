@@ -159,9 +159,11 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             "q": request.args.get("q", "").strip(),
             "ship_id": request.args.get("ship_id", "").strip(),
             "category": request.args.get("category", "").strip(),
+            "size": request.args.get("size", "").strip(),
             "grade": request.args.get("grade", "").strip(),
             "spec": request.args.get("spec", "").strip(),
         }
+        has_filters = any(filters.values())
         with connect(app.config["DATABASE_PATH"]) as connection:
             ships = connection.execute(
                 """
@@ -180,6 +182,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             ships=ships,
             components=components,
             filters=filters,
+            has_filters=has_filters,
             total_units=total_units,
             admin_configured=bool(app.config["ADMIN_PASSWORD"]),
         )
@@ -384,10 +387,11 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         return redirect(url_for("index"))
 
     @app.get("/export.csv")
+    @admin_required
     def export_csv() -> Response:
         filters = {
             key: request.args.get(key, "").strip()
-            for key in ("q", "ship_id", "category", "grade", "spec")
+            for key in ("q", "ship_id", "category", "size", "grade", "spec")
         }
         rows = inventory_rows(app.config["DATABASE_PATH"], filters)
         buffer = io.StringIO(newline="")

@@ -1,31 +1,29 @@
 {% extends "base.html" %}
 {% block title %}Inventory · Salvage Tracker{% endblock %}
 {% block content %}
+{% if session.get('is_admin') %}
 <section class="hero">
   <div>
     <p class="eyebrow">Live inventory</p>
     <h1>Ship salvage, organized.</h1>
-    <p>Search every recovered component and see exactly which ship it came from.</p>
+    <p>Search every recovered component and manage the ships it came from.</p>
   </div>
   <div class="hero-actions">
-    <a class="button button-secondary" href="{{ url_for('export_csv', q=filters.q, ship_id=filters.ship_id, category=filters.category, grade=filters.grade, spec=filters.spec) }}">Export CSV</a>
-    {% if session.get('is_admin') %}
-      <a class="button" href="{{ url_for('component_new') }}">Add component</a>
-    {% endif %}
+    <a class="button button-secondary" href="{{ url_for('export_csv', q=filters.q, ship_id=filters.ship_id, category=filters.category, size=filters.size, grade=filters.grade, spec=filters.spec) }}">Export CSV</a>
+    <a class="button" href="{{ url_for('component_new') }}">Add component</a>
   </div>
 </section>
+{% endif %}
 
 <section class="panel filter-panel" aria-labelledby="filter-heading">
   <div class="section-heading">
-    <div><p class="eyebrow">Global search</p><h2 id="filter-heading">Find a component</h2></div>
-    {% if filters.q or filters.ship_id or filters.category or filters.grade or filters.spec %}
-      <a href="{{ url_for('index') }}">Clear filters</a>
-    {% endif %}
+    <div><p class="eyebrow">Global search</p><h1 id="filter-heading" class="search-title">Find a component</h1></div>
+    {% if has_filters %}<a href="{{ url_for('index') }}">Clear filters</a>{% endif %}
   </div>
   <form method="get" class="filter-grid">
     <label class="field field-wide">
       <span>Search database</span>
-      <input type="search" name="q" value="{{ filters.q }}" placeholder="Component, category, ship, manufacturer, or source">
+      <input type="search" name="q" value="{{ filters.q }}" placeholder="Component, category, size, ship, manufacturer, or source">
     </label>
     <label class="field">
       <span>Ship</span>
@@ -40,6 +38,10 @@
         <option value="">All categories</option>
         {% for category in CATEGORY_OPTIONS %}<option {% if filters.category == category %}selected{% endif %}>{{ category }}</option>{% endfor %}
       </select>
+    </label>
+    <label class="field">
+      <span>Size</span>
+      <input name="size" value="{{ filters.size }}" maxlength="20" placeholder="Any size">
     </label>
     <label class="field">
       <span>Grade</span>
@@ -59,16 +61,24 @@
   </form>
 </section>
 
+{% if session.get('is_admin') %}
 <section class="stats" aria-label="Inventory totals">
   <div><strong>{{ ships|length }}</strong><span>Ships</span></div>
   <div><strong>{{ components|length }}</strong><span>Matching records</span></div>
   <div><strong>{{ total_units }}</strong><span>Matching units</span></div>
 </section>
+{% endif %}
 
+{% if session.get('is_admin') or has_filters %}
 <section class="panel" aria-labelledby="components-heading">
   <div class="section-heading">
-    <div><p class="eyebrow">Recovered inventory</p><h2 id="components-heading">Components</h2></div>
-    {% if session.get('is_admin') %}<a class="button button-small" href="{{ url_for('component_new') }}">Add component</a>{% endif %}
+    {% if session.get('is_admin') %}
+      <div><p class="eyebrow">Recovered inventory</p><h2 id="components-heading">Components</h2></div>
+      <a class="button button-small" href="{{ url_for('component_new') }}">Add component</a>
+    {% else %}
+      <div><p class="eyebrow">Global search</p><h2 id="components-heading">Matching results</h2></div>
+      <span class="result-count">{{ components|length }} record{% if components|length != 1 %}s{% endif %}</span>
+    {% endif %}
   </div>
   {% if components %}
   <div class="table-wrap">
@@ -99,14 +109,20 @@
     </table>
   </div>
   {% else %}
-    <div class="empty-state"><h3>No components found</h3><p>Try clearing the filters, or add the first component.</p></div>
+    <div class="empty-state"><h3>No matching components</h3><p>Try changing or clearing one of the search fields.</p></div>
   {% endif %}
 </section>
+{% else %}
+<section class="search-prompt" aria-live="polite">
+  <p>Enter a component name or use one of the filters above to search the salvage database.</p>
+</section>
+{% endif %}
 
+{% if session.get('is_admin') %}
 <section class="panel" aria-labelledby="ships-heading">
   <div class="section-heading">
     <div><p class="eyebrow">Source ships</p><h2 id="ships-heading">Ships</h2></div>
-    {% if session.get('is_admin') %}<a class="button button-small" href="{{ url_for('ship_new') }}">Add ship</a>{% endif %}
+    <a class="button button-small" href="{{ url_for('ship_new') }}">Add ship</a>
   </div>
   {% if ships %}
   <div class="ship-grid">
@@ -115,7 +131,6 @@
         <div><h3>{{ ship.name }}</h3><p>{{ ship.manufacturer or 'Manufacturer not set' }}</p></div>
         {% if ship.source %}<p class="source"><span>Ship source</span>{{ ship.source }}</p>{% endif %}
         <div class="ship-meta"><span>{{ ship.component_records }} records</span><span>{{ ship.component_units }} units</span></div>
-        {% if session.get('is_admin') %}
         <div class="card-actions">
           <a href="{{ url_for('component_new', ship_id=ship.id) }}">Add component</a>
           <a href="{{ url_for('ship_edit', ship_id=ship.id) }}">Edit</a>
@@ -124,12 +139,12 @@
             <button class="danger-link" type="submit">Delete</button>
           </form>
         </div>
-        {% endif %}
       </article>
     {% endfor %}
   </div>
   {% else %}
-    <div class="empty-state"><h3>No ships yet</h3><p>{% if session.get('is_admin') %}Add a ship to start tracking recovered components.{% else %}The administrator has not added any ships yet.{% endif %}</p></div>
+    <div class="empty-state"><h3>No ships yet</h3><p>Add a ship to start tracking recovered components.</p></div>
   {% endif %}
 </section>
+{% endif %}
 {% endblock %}
