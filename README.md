@@ -15,6 +15,8 @@ A responsive Flask + SQLite web app for tracking salvaged ships and their recove
 - Quick Category buttons and clickable Size, Grade, and Spec filter chips, including unspecified values
 - Mobile component result cards with ship links and compact component details
 - Browser-local personal Component Watchlist with grouped-component pin/unpin controls, a live pinned count, and clear-all action
+- Browser-local personal notes and High/Medium/Low priorities for every pinned component
+- Watchlist sorting by priority, recently pinned, component name, or category; the selected sort is saved in the browser
 - Responsive right-side pinned panel beside the search controls; grouped results render below at full page width, and the panel moves below the finder on smaller screens
 - Dedicated Pinned Components view; pins are stored only in the user's browser with no account or database migration
 - Public ship directory with live ship/manufacturer search and A–Z navigation; selecting a ship shows every associated component
@@ -129,7 +131,7 @@ The converter recognizes common legacy columns such as `ship_name`, `ship_source
 - The Gunicorn command intentionally uses **one worker** with multiple threads. Multiple independent workers are a poor fit for a small SQLite write workload.
 - SQLite uses WAL mode, foreign keys, a 30-second busy timeout, and one transaction per change.
 - Optional Grade and Spec values are stored as SQL `NULL`; startup migration safely upgrades older web schemas that incorrectly required empty strings.
-- Component pins use browser `localStorage` and never write to SQLite. Pins are specific to the browser/profile and may be cleared by browser-data cleanup.
+- Component pins, personal notes, priorities, and Watchlist sort preference use browser `localStorage` and never write to SQLite. They are specific to the browser/profile and may be cleared by browser-data cleanup.
 - A ship cannot be deleted while components still reference it.
 - Set a stable `SECRET_KEY`; changing it signs out all admin sessions.
 - Keep the Railway volume attached and back up `/data/salvage_tracker.db` periodically.

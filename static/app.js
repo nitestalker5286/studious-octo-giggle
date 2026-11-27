@@ -2,6 +2,15 @@
   "use strict";
 
   const STORAGE_KEY = "starCitizenSalvageTracker.pinnedComponents.v1";
+  const SORT_KEY = "starCitizenSalvageTracker.watchlistSort.v1";
+  const PRIORITY_LABELS = {
+    high: "High",
+    medium: "Medium",
+    low: "Low",
+    none: "No priority",
+  };
+  const PRIORITY_RANK = { high: 3, medium: 2, low: 1, none: 0 };
+  const SORT_OPTIONS = new Set(["priority", "recent", "name", "category"]);
 
   function storageAvailable() {
     try {
@@ -15,6 +24,48 @@
   }
 
   const canStorePins = storageAvailable();
+
+  function normalizePriority(value) {
+    const priority = String(value || "none").toLowerCase();
+    return Object.prototype.hasOwnProperty.call(PRIORITY_LABELS, priority) ? priority : "none";
+  }
+
+  function readSort() {
+    if (!canStorePins) return "priority";
+    try {
+      const sort = window.localStorage.getItem(SORT_KEY) || "priority";
+      return SORT_OPTIONS.has(sort) ? sort : "priority";
+    } catch (_error) {
+      return "priority";
+    }
+  }
+
+  function writeSort(sort) {
+    if (!canStorePins || !SORT_OPTIONS.has(sort)) return false;
+    try {
+      window.localStorage.setItem(SORT_KEY, sort);
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function sortPinnedItems(items, sort = readSort()) {
+    return [...items].sort((a, b) => {
+      if (sort === "recent") {
+        return String(b.pinnedAt).localeCompare(String(a.pinnedAt));
+      }
+      if (sort === "name") {
+        return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+      }
+      if (sort === "category") {
+        return a.category.localeCompare(b.category, undefined, { sensitivity: "base" })
+          || a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+      }
+      return (PRIORITY_RANK[b.priority] - PRIORITY_RANK[a.priority])
+        || a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    });
+  }
 
   function normalizedGroupValue(value) {
     return String(value || "").trim().toLowerCase();
@@ -66,7 +117,16 @@
         sources: [],
         primaryShipUrl: raw.primaryShipUrl || raw.shipUrl || "",
         pinnedAt: raw.pinnedAt || new Date().toISOString(),
+        priority: normalizePriority(raw.priority),
+        notes: typeof raw.notes === "string" ? raw.notes.slice(0, 500) : "",
       };
+      const rawPriority = normalizePriority(raw.priority);
+      if (PRIORITY_RANK[rawPriority] > PRIORITY_RANK[existing.priority]) {
+        existing.priority = rawPriority;
+      }
+      if (!existing.notes && typeof raw.notes === "string") {
+        existing.notes = raw.notes.slice(0, 500);
+      }
       const sourceMap = new Map(
         existing.sources.map((source) => [`${source.shipId}\x1f${source.source}`, source])
       );
@@ -87,9 +147,7 @@
       }
       grouped.set(id, existing);
     });
-    return [...grouped.values()]
-      .sort((a, b) => String(b.pinnedAt).localeCompare(String(a.pinnedAt)))
-      .slice(0, 500);
+    return [...grouped.values()].slice(0, 500);
   }
 
   function readPins() {
@@ -133,6 +191,8 @@
       sources,
       primaryShipUrl: button.dataset.primaryShipUrl || (sources[0] && sources[0].shipUrl) || "#",
       pinnedAt: new Date().toISOString(),
+      priority: "none",
+      notes: "",
     };
     item.id = item.id || groupIdForItem(item);
     return item;
@@ -191,13 +251,31 @@
     return button;
   }
 
+  function makePriorityBadge(priority) {
+    const normalized = normalizePriority(priority);
+    const badge = makeElement(
+      "span",
+      `priority-badge priority-${normalized}`,
+      PRIORITY_LABELS[normalized]
+    );
+    badge.dataset.priorityBadge = normalized;
+    return badge;
+  }
+
   function makeMiniWatchlistItem(item) {
     const article = makeElement("article", "watchlist-mini-item");
     const body = makeElement("div", "watchlist-mini-body");
     const name = makeElement("a", "watchlist-mini-name", item.name);
     name.href = item.primaryShipUrl || "#";
     const sourceLabel = `${item.sources.length} source${item.sources.length === 1 ? "" : "s"}`;
-    body.append(name, makeElement("span", "watchlist-mini-meta", `${sourceLabel} · ${item.category}`));
+    const meta = makeElement("span", "watchlist-mini-meta", `${sourceLabel} · ${item.category}`);
+    body.append(name, meta);
+    if (item.priority !== "none") body.append(makePriorityBadge(item.priority));
+    if (item.notes) {
+      const note = makeElement("span", "watchlist-mini-note", item.notes);
+      note.dataset.miniNotesId = item.id;
+      body.append(note);
+    }
     article.append(body, makeUnpinButton(item, true));
     return article;
   }
@@ -210,7 +288,9 @@
       makeElement("p", "eyebrow", item.category),
       makeElement("h2", "", item.name)
     );
-    heading.append(titleWrap, makeUnpinButton(item));
+    const headingTools = makeElement("div", "watchlist-card-tools");
+    headingTools.append(makePriorityBadge(item.priority), makeUnpinButton(item));
+    heading.append(titleWrap, headingTools);
 
     const facts = makeElement("dl", "result-facts watchlist-facts");
     [["Size", item.size], ["Grade", item.grade], ["Spec", item.spec], ["Qty", item.quantity]].forEach(
@@ -234,31 +314,66 @@
       sourceList.append(link);
     });
     details.append(sourceList);
+
+    const editor = makeElement("div", "watchlist-editor");
+    const priorityField = makeElement("label", "field watchlist-priority-field");
+    const priorityLabel = makeElement("span", "", "Priority");
+    const prioritySelect = makeElement("select", "");
+    prioritySelect.dataset.priorityId = item.id;
+    Object.entries(PRIORITY_LABELS).forEach(([value, label]) => {
+      const option = makeElement("option", "", label);
+      option.value = value;
+      option.selected = value === item.priority;
+      prioritySelect.append(option);
+    });
+    priorityField.append(priorityLabel, prioritySelect);
+
+    const notesField = makeElement("label", "field watchlist-notes-field");
+    const notesHeading = makeElement("span", "watchlist-notes-heading");
+    notesHeading.append(
+      document.createTextNode("Personal notes "),
+      makeElement("small", "", "Saved in this browser")
+    );
+    const notes = makeElement("textarea", "watchlist-notes");
+    notes.dataset.notesId = item.id;
+    notes.maxLength = 500;
+    notes.rows = 3;
+    notes.placeholder = "Add reminders, loadout plans, or acquisition notes…";
+    notes.value = item.notes;
+    notesField.append(notesHeading, notes);
+    editor.append(priorityField, notesField);
+
     const open = makeElement("a", "button button-secondary button-small watchlist-open", "Open first source");
     open.href = item.primaryShipUrl || (item.sources[0] && item.sources[0].shipUrl) || "#";
-    article.append(heading, facts, details, open);
+    article.append(heading, facts, details, editor, open);
     return article;
   }
 
   function renderWatchlists(items) {
+    const sortedItems = sortPinnedItems(items);
     const fullContainer = document.querySelector("[data-watchlist-items]");
     const fullEmpty = document.querySelector("[data-watchlist-empty]");
     if (fullContainer) {
-      fullContainer.replaceChildren(...items.map(makeWatchlistCard));
-      fullContainer.hidden = items.length === 0;
+      fullContainer.replaceChildren(...sortedItems.map(makeWatchlistCard));
+      fullContainer.hidden = sortedItems.length === 0;
     }
-    if (fullEmpty) fullEmpty.hidden = items.length !== 0;
+    if (fullEmpty) fullEmpty.hidden = sortedItems.length !== 0;
 
     const homeContainer = document.querySelector("[data-home-watchlist-items]");
     const homeEmpty = document.querySelector("[data-home-watchlist-empty]");
     if (homeContainer) {
-      homeContainer.replaceChildren(...items.slice(0, 8).map(makeMiniWatchlistItem));
-      homeContainer.hidden = items.length === 0;
+      homeContainer.replaceChildren(...sortedItems.slice(0, 8).map(makeMiniWatchlistItem));
+      homeContainer.hidden = sortedItems.length === 0;
     }
-    if (homeEmpty) homeEmpty.hidden = items.length !== 0;
+    if (homeEmpty) homeEmpty.hidden = sortedItems.length !== 0;
+
+    document.querySelectorAll("[data-watchlist-sort]").forEach((select) => {
+      select.value = readSort();
+      select.disabled = !canStorePins;
+    });
 
     document.querySelectorAll("[data-clear-pins]").forEach((button) => {
-      button.disabled = items.length === 0 || !canStorePins;
+      button.disabled = sortedItems.length === 0 || !canStorePins;
     });
   }
 
@@ -288,6 +403,21 @@
     if (writePins(items)) refreshWatchlistUI();
   }
 
+  function updatePinMetadata(id, updates, rerender = false) {
+    if (!canStorePins) return;
+    const items = readPins();
+    const item = items.find((candidate) => String(candidate.id) === String(id));
+    if (!item) return;
+    Object.assign(item, updates);
+    if (!writePins(items)) return;
+    if (rerender) refreshWatchlistUI();
+    else {
+      document.querySelectorAll("[data-mini-notes-id]").forEach((note) => {
+        if (note.dataset.miniNotesId === String(id)) note.textContent = item.notes;
+      });
+    }
+  }
+
   document.addEventListener("click", (event) => {
     if (!(event.target instanceof Element)) return;
     const pinButton = event.target.closest("[data-pin-component]");
@@ -306,6 +436,29 @@
         writePins([]);
         refreshWatchlistUI();
       }
+    }
+  });
+
+  document.addEventListener("change", (event) => {
+    if (!(event.target instanceof Element)) return;
+    const priority = event.target.closest("[data-priority-id]");
+    if (priority) {
+      updatePinMetadata(
+        priority.dataset.priorityId,
+        { priority: normalizePriority(priority.value) },
+        true
+      );
+      return;
+    }
+    const sort = event.target.closest("[data-watchlist-sort]");
+    if (sort && writeSort(sort.value)) refreshWatchlistUI();
+  });
+
+  document.addEventListener("input", (event) => {
+    if (!(event.target instanceof Element)) return;
+    const notes = event.target.closest("[data-notes-id]");
+    if (notes) {
+      updatePinMetadata(notes.dataset.notesId, { notes: notes.value.slice(0, 500) });
     }
   });
 
@@ -376,7 +529,7 @@
   );
 
   window.addEventListener("storage", (event) => {
-    if (event.key === STORAGE_KEY) refreshWatchlistUI();
+    if (event.key === STORAGE_KEY || event.key === SORT_KEY) refreshWatchlistUI();
   });
   refreshWatchlistUI();
 })();

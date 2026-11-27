@@ -274,6 +274,10 @@ def test_browser_local_watchlist_page_requires_no_account_or_database_data(clien
     assert b"data-watchlist-empty" in response.data
     assert b"data-clear-pins" in response.data
     assert b"data-pin-count" in response.data
+    assert b"data-watchlist-sort" in response.data
+    assert b"Recently pinned" in response.data
+    assert b"Component name" in response.data
+    assert b"Category" in response.data
 
 
 def test_public_duplicate_components_are_grouped_with_expandable_sources(client, app):

@@ -9,6 +9,15 @@
   </div>
   <div class="watchlist-header-actions">
     <span class="pin-count pin-count-hero" data-pin-count aria-label="0 pinned components">0</span>
+    <label class="watchlist-sort-control">
+      <span>Sort by</span>
+      <select data-watchlist-sort aria-label="Sort pinned components">
+        <option value="priority">Priority</option>
+        <option value="recent">Recently pinned</option>
+        <option value="name">Component name</option>
+        <option value="category">Category</option>
+      </select>
+    </label>
     <button type="button" class="button button-secondary" data-clear-pins>Clear all pins</button>
   </div>
 </section>
