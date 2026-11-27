@@ -30,6 +30,7 @@ from database import (
     initialize_database,
     insert_component,
     inventory_rows,
+    normalize_component_size,
     replace_ship_sources,
     transaction,
     update_component,
@@ -230,11 +231,13 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             ).fetchall()
             ships = enrich_ship_rows(connection, ship_rows)
             size_options = [
-                row["size"]
+                str(row["size"])
                 for row in connection.execute(
                     """
                     SELECT DISTINCT size FROM components
-                    WHERE size IS NOT NULL AND TRIM(size) <> ''
+                    WHERE size IS NOT NULL
+                      AND TRIM(CAST(size AS TEXT)) <> ''
+                      AND CAST(size AS INTEGER) BETWEEN 1 AND 10
                     ORDER BY CAST(size AS INTEGER), size COLLATE NOCASE
                     """
                 ).fetchall()
@@ -265,7 +268,9 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             ).fetchall()
             components = connection.execute(
                 """
-                SELECT c.id, c.name, c.category, c.size, c.grade, c.spec,
+                SELECT c.id, c.name, c.category,
+                       CASE WHEN CAST(c.size AS INTEGER) = 0 THEN NULL ELSE c.size END AS size,
+                       c.grade, c.spec,
                        s.id AS ship_id, s.name AS ship_name
                 FROM components c JOIN ships s ON s.id = c.ship_id
                 ORDER BY c.name COLLATE NOCASE, s.name COLLATE NOCASE, c.id
@@ -361,6 +366,11 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                 return redirect(url_for("change_request_thanks"))
             except ValueError as error:
                 flash(str(error), "error")
+            except sqlite3.IntegrityError as error:
+                if "size" in str(error).lower() and "check constraint" in str(error).lower():
+                    flash("Size must be a whole number from 0 to 10.", "error")
+                else:
+                    raise
         return render_template(
             "change_request_form.html",
             ships=ships,
@@ -641,6 +651,11 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                 return redirect(url_for("index"))
             except ValueError as error:
                 flash(str(error), "error")
+            except sqlite3.IntegrityError as error:
+                if "size" in str(error).lower() and "check constraint" in str(error).lower():
+                    flash("Size must be a whole number from 0 to 10.", "error")
+                else:
+                    raise
         return render_template(
             "component_form.html", component=None, ships=ships,
             selected_ship_id=request.args.get("ship_id", ""),
@@ -662,13 +677,18 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                 return redirect(url_for("index"))
             except ValueError as error:
                 flash(str(error), "error")
+            except sqlite3.IntegrityError as error:
+                if "size" in str(error).lower() and "check constraint" in str(error).lower():
+                    flash("Size must be a whole number from 0 to 10.", "error")
+                else:
+                    raise
         return render_template(
             "component_form.html", component=component, ships=ships, selected_ship_id=""
         )
 
     def validate_component_form(
         database_path: str,
-    ) -> tuple[int, str, str, str, str | None, str | None, int]:
+    ) -> tuple[int, str, str, int, str | None, str | None, int]:
         try:
             ship_id = int(request.form.get("ship_id", ""))
         except ValueError as error:
@@ -680,7 +700,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         category = request.form.get("category", "")
         if category not in CATEGORY_OPTIONS:
             raise ValueError("Select a valid component category.")
-        size = form_text("size", 20)
+        size = normalize_component_size(request.form.get("size", ""))
         grade_value = request.form.get("grade", "").strip()
         spec_value = request.form.get("spec", "").strip()
         if grade_value and grade_value not in GRADE_OPTIONS:

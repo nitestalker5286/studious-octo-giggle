@@ -49,12 +49,44 @@ def _add_column(connection: sqlite3.Connection, table: str, name: str, definitio
         connection.execute(f'ALTER TABLE "{table}" ADD COLUMN "{name}" {definition}')
 
 
+def normalize_component_size(value: Any) -> int:
+    """Return a production-compatible whole-number component size from 0 through 10."""
+    if isinstance(value, bool):
+        raise ValueError("Size must be a whole number from 0 to 10.")
+    text = str(value).strip()
+    if not text:
+        raise ValueError("Size is required. Enter a whole number from 0 to 10.")
+    try:
+        size = int(text)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Size must be a whole number from 0 to 10.") from error
+    if str(size) != text and text not in (f"+{size}", f"-{abs(size)}"):
+        raise ValueError("Size must be a whole number from 0 to 10.")
+    if not 0 <= size <= 10:
+        raise ValueError("Size must be between 0 and 10.")
+    return size
+
+
+def _display_component_size(value: Any) -> Any:
+    """Normalize canonical numeric sizes while retaining unusual legacy values for review."""
+    if value is None:
+        return 0
+    text = str(value).strip()
+    if not text:
+        return 0
+    try:
+        size = int(text)
+    except ValueError:
+        return value
+    return size if 0 <= size <= 10 else value
+
+
 def _component_write_values(
     connection: sqlite3.Connection,
     ship_id: int,
     name: str,
     category: str,
-    size: str,
+    size: int,
     grade: str | None,
     spec: str | None,
     quantity: int,
@@ -68,6 +100,7 @@ def _component_write_values(
     without rebuilding (and risking) the user's persistent inventory.
     """
     columns = _columns(connection, "components")
+    size = normalize_component_size(size)
     values: dict[str, Any] = {
         "ship_id": ship_id,
         "name": name,
@@ -99,7 +132,7 @@ def insert_component(
     ship_id: int,
     name: str,
     category: str,
-    size: str,
+    size: int,
     grade: str | None,
     spec: str | None,
     quantity: int,
@@ -124,7 +157,7 @@ def update_component(
     ship_id: int,
     name: str,
     category: str,
-    size: str,
+    size: int,
     grade: str | None,
     spec: str | None,
     quantity: int,
@@ -155,7 +188,7 @@ def _make_optional_component_fields_nullable(connection: sqlite3.Connection) -> 
             ship_id INTEGER NOT NULL,
             name TEXT NOT NULL,
             category TEXT NOT NULL,
-            size TEXT NOT NULL DEFAULT '',
+            size INTEGER NOT NULL DEFAULT 0,
             grade TEXT,
             spec TEXT,
             quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
@@ -169,7 +202,8 @@ def _make_optional_component_fields_nullable(connection: sqlite3.Connection) -> 
         """
         INSERT INTO components_nullable
             (id, ship_id, name, category, size, grade, spec, quantity, created_at, updated_at)
-        SELECT id, ship_id, name, category, COALESCE(size, ''),
+        SELECT id, ship_id, name, category,
+               CASE WHEN size IS NULL OR TRIM(CAST(size AS TEXT)) = '' THEN 0 ELSE size END,
                NULLIF(TRIM(grade), ''), NULLIF(TRIM(spec), ''),
                CASE WHEN quantity IS NULL OR quantity < 1 THEN 1 ELSE quantity END,
                COALESCE(NULLIF(created_at, ''), CURRENT_TIMESTAMP),
@@ -385,7 +419,7 @@ def initialize_database(database_path: str) -> None:
                 ship_id INTEGER NOT NULL,
                 name TEXT NOT NULL,
                 category TEXT NOT NULL,
-                size TEXT NOT NULL DEFAULT '',
+                size INTEGER NOT NULL DEFAULT 0 CHECK (size BETWEEN 0 AND 10),
                 grade TEXT,
                 spec TEXT,
                 quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
@@ -423,7 +457,7 @@ def initialize_database(database_path: str) -> None:
             ("ship_id", "INTEGER"),
             ("name", "TEXT NOT NULL DEFAULT ''"),
             ("category", "TEXT NOT NULL DEFAULT 'Other'"),
-            ("size", "TEXT NOT NULL DEFAULT ''"),
+            ("size", "INTEGER NOT NULL DEFAULT 0 CHECK (size BETWEEN 0 AND 10)"),
             ("grade", "TEXT"),
             ("spec", "TEXT"),
             ("quantity", "INTEGER NOT NULL DEFAULT 1"),
@@ -453,6 +487,14 @@ def initialize_database(database_path: str) -> None:
                             f'UPDATE components SET "{canonical}" = "{legacy}" WHERE {empty_condition} AND "{legacy}" IS NOT NULL'
                         )
                     break
+
+        # The production desktop schema requires size BETWEEN 0 AND 10 and may
+        # also require a non-NULL value. Normalize only missing legacy values;
+        # valid existing sizes and unusual historical data are otherwise retained.
+        connection.execute(
+            "UPDATE components SET size = 0 "
+            "WHERE size IS NULL OR TRIM(CAST(size AS TEXT)) = ''"
+        )
 
         # Keep retained desktop columns usable for external/older consumers too.
         # These statements are safe to repeat on every Railway restart.
@@ -535,10 +577,24 @@ def inventory_rows(database_path: str, filters: dict[str, str] | None = None) ->
     ):
         value = filters.get(key, "").strip()
         if value == "__none__":
-            clauses.append(f"({column} IS NULL OR TRIM({column}) = '')")
+            if key == "size":
+                clauses.append(
+                    f"({column} IS NULL OR TRIM(CAST({column} AS TEXT)) = '' OR CAST({column} AS INTEGER) = 0)"
+                )
+            else:
+                clauses.append(f"({column} IS NULL OR TRIM({column}) = '')")
         elif value:
-            clauses.append(f"{column} = ?")
-            values.append(value)
+            if key == "size":
+                try:
+                    size = normalize_component_size(value)
+                except ValueError:
+                    clauses.append("1 = 0")
+                else:
+                    clauses.append(f"CAST({column} AS INTEGER) = ?")
+                    values.append(size)
+            else:
+                clauses.append(f"{column} = ?")
+                values.append(value)
 
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     query = f"""
@@ -555,6 +611,7 @@ def inventory_rows(database_path: str, filters: dict[str, str] | None = None) ->
         result: list[dict[str, Any]] = []
         for row in rows:
             item = dict(row)
+            item["size"] = _display_component_size(item["size"])
             item["sources"] = sources.get(int(row["ship_id"]), [])
             item["source"] = " | ".join(item["sources"])
             result.append(item)

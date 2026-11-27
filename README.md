@@ -5,7 +5,7 @@ A responsive Flask + SQLite web app for tracking salvaged ships and their recove
 ## Included features
 
 - Ships: name, manufacturer, and zero or more **Ship Sources** (no ship quantity column)
-- Components: name, category, size, optional grade, optional spec, and quantity
+- Components: name, category, required whole-number size from 0 through 10, optional grade, optional spec, and quantity
 - Grade options: blank, A, B, C, D
 - Spec options: blank, MIL, CIV, CMP, IND, STH
 - Categories include Guns, Missiles, Radar, Salvage Module, and the original ship-component categories
@@ -137,6 +137,7 @@ The converter recognizes common legacy columns such as `ship_name`, `ship_source
 - The Gunicorn command intentionally uses **one worker** with multiple threads. Multiple independent workers are a poor fit for a small SQLite write workload.
 - SQLite uses WAL mode, foreign keys, a 30-second busy timeout, and one transaction per change.
 - Optional Grade and Spec values are stored as SQL `NULL`; startup migration safely upgrades older web schemas that incorrectly required empty strings.
+- Component add/edit forms validate Size as a required whole number from `0` through `10` before any database write. Missing legacy sizes are normalized to `0` by an idempotent startup compatibility step, matching production SQLite databases that enforce `CHECK (size BETWEEN 0 AND 10)`.
 - Viewer change requests are review records only. Approved, rejected, and resolved statuses never invoke ship or component insert/update/delete operations; verified inventory changes must be made manually with the normal Admin tools.
 - Component pins, personal notes, priorities, and Watchlist sort preference use browser `localStorage` and never write to SQLite. They are specific to the browser/profile and may be cleared by browser-data cleanup.
 - A ship cannot be deleted while components still reference it.

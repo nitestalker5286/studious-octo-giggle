@@ -132,7 +132,7 @@ def test_admin_crud_search_filters_and_optional_fields(client, app, tmp_path):
             "ship_id": "1",
             "name": "Surveyor Array",
             "category": "Radar",
-            "size": "",
+            "size": "0",
             "grade": "",
             "spec": "",
             "quantity": "1",
@@ -144,6 +144,7 @@ def test_admin_crud_search_filters_and_optional_fields(client, app, tmp_path):
         radar = connection.execute("SELECT * FROM components WHERE name = 'Surveyor Array'").fetchone()
         assert radar["grade"] is None
         assert radar["spec"] is None
+        assert radar["size"] == 0
 
     snapshot = tmp_path / "inventory.csv"
     assert snapshot.exists()
@@ -152,6 +153,55 @@ def test_admin_crud_search_filters_and_optional_fields(client, app, tmp_path):
     post(client, f"/components/{radar['id']}/delete", {})
     with connect(app.config["DATABASE_PATH"]) as connection:
         assert connection.execute("SELECT 1 FROM components WHERE id = ?", (radar["id"],)).fetchone() is None
+
+
+def test_component_size_validation_prevents_constraint_server_errors(client, app):
+    login(client)
+    post(client, "/ships/new", {"name": "Prospector", "manufacturer": "MISC", "source": ""})
+    base = {
+        "ship_id": "1",
+        "name": "Invalid Size Item",
+        "category": "Mining Module",
+        "grade": "",
+        "spec": "",
+        "quantity": "1",
+    }
+    for invalid_size, expected in (
+        ("", b"Size is required. Enter a whole number from 0 to 10."),
+        ("3.5", b"Size must be a whole number from 0 to 10."),
+        ("large", b"Size must be a whole number from 0 to 10."),
+        ("-1", b"Size must be between 0 and 10."),
+        ("11", b"Size must be between 0 and 10."),
+    ):
+        response = post(client, "/components/new", {**base, "size": invalid_size})
+        assert response.status_code == 200
+        assert expected in response.data
+        assert b"Internal Server Error" not in response.data
+
+    with connect(app.config["DATABASE_PATH"]) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM components").fetchone()[0] == 0
+
+    lower = post(client, "/components/new", {**base, "name": "Size Zero", "size": "0"})
+    upper = post(client, "/components/new", {**base, "name": "Size Ten", "size": "10"})
+    assert b"Size Zero" in lower.data
+    assert b"Size Ten" in upper.data
+    with connect(app.config["DATABASE_PATH"]) as connection:
+        zero = connection.execute("SELECT * FROM components WHERE name = 'Size Zero'").fetchone()
+        ten = connection.execute("SELECT * FROM components WHERE name = 'Size Ten'").fetchone()
+        assert zero["size"] == 0
+        assert ten["size"] == 10
+
+    invalid_edit = post(
+        client,
+        f"/components/{ten['id']}/edit",
+        {**base, "name": "Should Not Save", "size": "12"},
+    )
+    assert invalid_edit.status_code == 200
+    assert b"Size must be between 0 and 10." in invalid_edit.data
+    with connect(app.config["DATABASE_PATH"]) as connection:
+        unchanged = connection.execute("SELECT * FROM components WHERE id = ?", (ten["id"],)).fetchone()
+        assert unchanged["name"] == "Size Ten"
+        assert unchanged["size"] == 10
 
 
 def test_public_view_is_search_only_and_returns_matching_results(client):
@@ -499,6 +549,41 @@ def test_existing_not_null_grade_spec_schema_is_migrated_without_data_loss(tmp_p
         assert info["spec"]["notnull"] == 0
 
 
+def test_missing_legacy_size_is_normalized_to_zero_idempotently(tmp_path):
+    database_path = tmp_path / "legacy_missing_size.db"
+    connection = sqlite3.connect(database_path)
+    connection.executescript(
+        """
+        CREATE TABLE ships (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+            manufacturer TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO ships(id, name) VALUES (1, 'Vulture');
+        CREATE TABLE components (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, ship_id INTEGER NOT NULL,
+            name TEXT NOT NULL, category TEXT NOT NULL, size TEXT,
+            grade TEXT, spec TEXT, quantity INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO components(id, ship_id, name, category, size, quantity)
+        VALUES (3, 1, 'Abrade', 'Salvage Module', '', 1);
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    initialize_database(str(database_path))
+    initialize_database(str(database_path))
+    initialize_database(str(database_path))
+    with connect(str(database_path)) as migrated:
+        row = migrated.execute("SELECT * FROM components WHERE id = 3").fetchone()
+        assert int(row["size"]) == 0
+        assert migrated.execute("SELECT COUNT(*) FROM components").fetchone()[0] == 1
+
+
 def test_ship_sources_migration_is_safe_idempotent_and_preserves_legacy_value(tmp_path):
     database_path = tmp_path / "legacy_sources.db"
     connection = sqlite3.connect(database_path)
@@ -559,7 +644,7 @@ def test_hybrid_legacy_component_constraints_support_create_and_edit(tmp_path):
             component_type TEXT NOT NULL,
             name TEXT NOT NULL DEFAULT '',
             category TEXT NOT NULL DEFAULT 'Other',
-            size TEXT NOT NULL DEFAULT '',
+            size INTEGER NOT NULL DEFAULT 0 CHECK (size BETWEEN 0 AND 10),
             grade TEXT,
             spec TEXT,
             quantity INTEGER NOT NULL DEFAULT 1,
