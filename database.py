@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import base64
 import os
 import sqlite3
 import tempfile
@@ -242,6 +243,80 @@ def inventory_rows(database_path: str, filters: dict[str, str] | None = None) ->
     """
     with connect(database_path) as connection:
         return connection.execute(query, values).fetchall()
+
+
+def _group_value(value: Any) -> str:
+    return "" if value is None else str(value).strip().lower()
+
+
+def component_group_id(name: Any, category: Any, size: Any, grade: Any, spec: Any) -> str:
+    """Return a deterministic browser-safe ID for one component configuration."""
+    canonical = "\x1f".join(
+        _group_value(value) for value in (name, category, size, grade, spec)
+    )
+    encoded = base64.urlsafe_b64encode(canonical.encode("utf-8")).decode("ascii").rstrip("=")
+    return f"group-{encoded}"
+
+
+def group_inventory_rows(rows: list[sqlite3.Row]) -> list[dict[str, Any]]:
+    """Group duplicate public component rows and aggregate their per-ship sources."""
+    groups: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        group_id = component_group_id(
+            row["name"], row["category"], row["size"], row["grade"], row["spec"]
+        )
+        group = groups.setdefault(
+            group_id,
+            {
+                "id": group_id,
+                "name": row["name"],
+                "category": row["category"],
+                "size": row["size"] or "",
+                "grade": row["grade"],
+                "spec": row["spec"],
+                "quantity": 0,
+                "record_ids": [],
+                "_sources": {},
+            },
+        )
+        quantity = int(row["quantity"] or 0)
+        group["quantity"] += quantity
+        group["record_ids"].append(int(row["id"]))
+        source_key = (int(row["ship_id"]), row["source"] or "")
+        source = group["_sources"].setdefault(
+            source_key,
+            {
+                "ship_id": int(row["ship_id"]),
+                "ship_name": row["ship_name"],
+                "manufacturer": row["manufacturer"] or "",
+                "source": row["source"] or "",
+                "quantity": 0,
+            },
+        )
+        source["quantity"] += quantity
+
+    result: list[dict[str, Any]] = []
+    for group in groups.values():
+        group["sources"] = sorted(
+            group.pop("_sources").values(),
+            key=lambda source: (
+                _group_value(source["ship_name"]),
+                _group_value(source["source"]),
+                source["ship_id"],
+            ),
+        )
+        group["source_count"] = len(group["sources"])
+        result.append(group)
+    return sorted(
+        result,
+        key=lambda group: (
+            _group_value(group["name"]),
+            _group_value(group["category"]),
+            _group_value(group["size"]),
+            _group_value(group["grade"]),
+            _group_value(group["spec"]),
+        ),
+    )
 
 
 def write_inventory_csv(database_path: str, output_path: str) -> None:

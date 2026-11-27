@@ -23,7 +23,14 @@ from flask import (
 )
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from database import connect, initialize_database, inventory_rows, transaction, write_inventory_csv
+from database import (
+    connect,
+    group_inventory_rows,
+    initialize_database,
+    inventory_rows,
+    transaction,
+    write_inventory_csv,
+)
 
 CATEGORY_OPTIONS = (
     "Power Plant",
@@ -36,6 +43,7 @@ CATEGORY_OPTIONS = (
     "Turret",
     "Radar",
     "Mining Module",
+    "Salvage Module",
     "Utility Item",
     "Other",
 )
@@ -155,12 +163,16 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
     @app.get("/")
     def index() -> str:
+        def filter_value(name: str) -> str:
+            value = request.args.get(name, "").strip()
+            return "" if value.casefold() == "all" else value
+
         filters = {
             "q": request.args.get("q", "").strip(),
-            "category": request.args.get("category", "").strip(),
-            "size": request.args.get("size", "").strip(),
-            "grade": request.args.get("grade", "").strip(),
-            "spec": request.args.get("spec", "").strip(),
+            "category": filter_value("category"),
+            "size": filter_value("size"),
+            "grade": filter_value("grade"),
+            "spec": filter_value("spec"),
         }
         has_filters = any(filters.values())
         with connect(app.config["DATABASE_PATH"]) as connection:
@@ -184,12 +196,9 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                     """
                 ).fetchall()
             ]
+        inventory = inventory_rows(app.config["DATABASE_PATH"], filters)
         is_admin = bool(session.get("is_admin"))
-        components = (
-            inventory_rows(app.config["DATABASE_PATH"], filters)
-            if is_admin or has_filters
-            else []
-        )
+        components = inventory if is_admin else group_inventory_rows(inventory)
         total_units = sum(row["quantity"] for row in components)
         return render_template(
             "index.html",
@@ -201,6 +210,10 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             total_units=total_units,
             admin_configured=bool(app.config["ADMIN_PASSWORD"]),
         )
+
+    @app.get("/watchlist")
+    def watchlist() -> str:
+        return render_template("watchlist.html")
 
     @app.get("/ships")
     def public_ships() -> str:
@@ -242,11 +255,18 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     def public_ship_detail(ship_id: int) -> str:
         ship = get_ship_or_404(ship_id)
         components = inventory_rows(app.config["DATABASE_PATH"], {"ship_id": str(ship_id)})
+        all_groups = group_inventory_rows(inventory_rows(app.config["DATABASE_PATH"]))
+        pin_groups = {
+            record_id: group
+            for group in all_groups
+            for record_id in group["record_ids"]
+        }
         total_units = sum(row["quantity"] for row in components)
         return render_template(
             "public_ship_detail.html",
             ship=ship,
             components=components,
+            pin_groups=pin_groups,
             total_units=total_units,
         )
 

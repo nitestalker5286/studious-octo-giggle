@@ -15,6 +15,7 @@
 </section>
 {% endif %}
 
+{% if not session.get('is_admin') %}<div class="public-home-layout"><div class="public-main-column">{% endif %}
 <section class="panel filter-panel" aria-labelledby="filter-heading">
   <div class="section-heading">
     <div><p class="eyebrow">Public search</p><h1 id="filter-heading" class="search-title">Component Finder</h1></div>
@@ -83,21 +84,21 @@
 {% endif %}
 
 <div id="component-results">
-{% if session.get('is_admin') or has_filters %}
 <section class="panel" aria-labelledby="components-heading">
   <div class="section-heading">
     {% if session.get('is_admin') %}
       <div><p class="eyebrow">Recovered inventory</p><h2 id="components-heading">Components</h2></div>
       <a class="button button-small" href="{{ url_for('component_new') }}">Add component</a>
     {% else %}
-      <div><p class="eyebrow">Component Finder</p><h2 id="components-heading">Matching results</h2></div>
-      <span class="result-count">{{ components|length }} record{% if components|length != 1 %}s{% endif %}</span>
+      <div><p class="eyebrow">Component Finder</p><h2 id="components-heading">{% if has_filters %}Matching results{% else %}All components{% endif %}</h2></div>
+      <span class="result-count">{{ components|length }} component result{% if components|length != 1 %}s{% endif %}</span>
     {% endif %}
   </div>
   {% if components %}
-  <div class="table-wrap {% if not session.get('is_admin') %}public-results-table{% endif %}">
+  {% if session.get('is_admin') %}
+  <div class="table-wrap">
     <table>
-      <thead><tr><th>Component</th><th>Ship</th><th>Category</th><th>Size</th><th>Grade</th><th>Spec</th><th class="number">Qty</th>{% if session.get('is_admin') %}<th class="actions">Actions</th>{% endif %}</tr></thead>
+      <thead><tr><th>Component</th><th>Ship</th><th>Category</th><th>Size</th><th>Grade</th><th>Spec</th><th class="number">Qty</th><th class="actions">Actions</th></tr></thead>
       <tbody>
       {% for component in components %}
         <tr>
@@ -108,7 +109,6 @@
           <td data-label="Grade">{{ component.grade or '—' }}</td>
           <td data-label="Spec">{{ component.spec or '—' }}</td>
           <td data-label="Qty" class="number">{{ component.quantity }}</td>
-          {% if session.get('is_admin') %}
           <td class="actions">
             <a href="{{ url_for('component_edit', component_id=component.id) }}">Edit</a>
             <form action="{{ url_for('component_delete', component_id=component.id) }}" method="post" class="inline-form">
@@ -116,20 +116,71 @@
               <button class="danger-link" type="submit">Delete</button>
             </form>
           </td>
-          {% endif %}
         </tr>
       {% endfor %}
       </tbody>
     </table>
   </div>
-  {% if not session.get('is_admin') %}
+  {% else %}
+  <div class="table-wrap public-results-table grouped-results-table">
+    <table>
+      <thead><tr><th>Component</th><th>Category</th><th>Size</th><th>Grade</th><th>Spec</th><th class="number">Total Qty</th><th>Sources</th><th class="actions">Watchlist</th></tr></thead>
+      <tbody>
+      {% for component in components %}
+        <tr>
+          <td data-label="Component"><strong>{{ component.name }}</strong></td>
+          <td data-label="Category"><span class="tag">{{ component.category }}</span></td>
+          <td data-label="Size">{{ component.size or '—' }}</td>
+          <td data-label="Grade">{{ component.grade or '—' }}</td>
+          <td data-label="Spec">{{ component.spec or '—' }}</td>
+          <td data-label="Total Qty" class="number">{{ component.quantity }}</td>
+          <td data-label="Sources" class="sources-cell">
+            <details class="sources-disclosure">
+              <summary>{{ component.source_count }} source{% if component.source_count != 1 %}s{% endif %}</summary>
+              <div class="source-list">
+              {% for source in component.sources %}
+                <a class="source-item" href="{{ url_for('public_ship_detail', ship_id=source.ship_id) }}">
+                  <span><strong>{{ source.ship_name }}</strong>{% if source.manufacturer %}<small>{{ source.manufacturer }}</small>{% endif %}{% if source.source %}<small>Source: {{ source.source }}</small>{% endif %}</span>
+                  <strong class="source-quantity">Qty {{ source.quantity }}</strong>
+                </a>
+              {% endfor %}
+              </div>
+            </details>
+          </td>
+          <td class="actions pin-cell">
+            <button type="button" class="pin-button" aria-pressed="false" data-pin-component
+              data-group-id="{{ component.id }}" data-name="{{ component.name }}"
+              data-category="{{ component.category }}" data-size="{{ component.size or '' }}"
+              data-grade="{{ component.grade or '' }}" data-spec="{{ component.spec or '' }}"
+              data-quantity="{{ component.quantity }}" data-sources="{{ component.sources|tojson|forceescape }}"
+              data-primary-ship-url="{{ url_for('public_ship_detail', ship_id=component.sources[0].ship_id) }}">
+              <span class="pin-icon" aria-hidden="true">☆</span><span class="pin-label">Pin</span>
+            </button>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
   <div class="mobile-result-cards">
     {% for component in components %}
     <article class="result-card">
-      <div class="result-card-heading"><div><p class="eyebrow">{{ component.category }}</p><h3>{{ component.name }}</h3></div><strong class="result-qty">×{{ component.quantity }}</strong></div>
-      <a class="result-ship" href="{{ url_for('public_ship_detail', ship_id=component.ship_id) }}">{{ component.ship_name }}</a>
-      {% if component.manufacturer or component.source %}<p class="result-subtext">{{ component.manufacturer }}{% if component.manufacturer and component.source %} · {% endif %}{% if component.source %}{{ component.source }}{% endif %}</p>{% endif %}
+      <div class="result-card-heading"><div><p class="eyebrow">{{ component.category }}</p><h3>{{ component.name }}</h3></div><div class="result-card-tools"><strong class="result-qty">×{{ component.quantity }}</strong><button type="button" class="pin-button pin-button-icon" aria-pressed="false" data-pin-component
+        data-group-id="{{ component.id }}" data-name="{{ component.name }}"
+        data-category="{{ component.category }}" data-size="{{ component.size or '' }}"
+        data-grade="{{ component.grade or '' }}" data-spec="{{ component.spec or '' }}"
+        data-quantity="{{ component.quantity }}" data-sources="{{ component.sources|tojson|forceescape }}"
+        data-primary-ship-url="{{ url_for('public_ship_detail', ship_id=component.sources[0].ship_id) }}"
+        aria-label="Pin {{ component.name }}"><span class="pin-icon" aria-hidden="true">☆</span><span class="pin-label visually-hidden">Pin</span></button></div></div>
       <dl class="result-facts"><div><dt>Size</dt><dd>{{ component.size or '—' }}</dd></div><div><dt>Grade</dt><dd>{{ component.grade or '—' }}</dd></div><div><dt>Spec</dt><dd>{{ component.spec or '—' }}</dd></div></dl>
+      <details class="sources-disclosure mobile-sources">
+        <summary>{{ component.source_count }} source{% if component.source_count != 1 %}s{% endif %}</summary>
+        <div class="source-list">
+        {% for source in component.sources %}
+          <a class="source-item" href="{{ url_for('public_ship_detail', ship_id=source.ship_id) }}"><span><strong>{{ source.ship_name }}</strong>{% if source.source %}<small>{{ source.source }}</small>{% endif %}</span><strong class="source-quantity">Qty {{ source.quantity }}</strong></a>
+        {% endfor %}
+        </div>
+      </details>
     </article>
     {% endfor %}
   </div>
@@ -138,10 +189,25 @@
     <div class="empty-state"><h3>No matching components</h3><p>Try changing or clearing one of the search fields.</p></div>
   {% endif %}
 </section>
-{% else %}
-<section class="search-prompt" aria-live="polite"><p>Start typing a component name or choose a filter above.</p></section>
-{% endif %}
 </div>
+
+{% if not session.get('is_admin') %}
+</div>
+<aside class="panel home-watchlist-panel" data-home-watchlist aria-labelledby="home-watchlist-heading">
+  <div class="watchlist-panel-heading">
+    <div><p class="eyebrow">Personal watchlist</p><h2 id="home-watchlist-heading">Pinned components</h2></div>
+    <span class="pin-count pin-count-large" data-pin-count aria-label="0 pinned components">0</span>
+  </div>
+  <p class="watchlist-local-note">Saved only in this browser.</p>
+  <div class="home-watchlist-items" data-home-watchlist-items></div>
+  <div class="watchlist-empty compact" data-home-watchlist-empty><p>No pinned components yet.</p></div>
+  <div class="watchlist-panel-actions">
+    <a href="{{ url_for('watchlist') }}">Open full watchlist</a>
+    <button type="button" class="danger-link" data-clear-pins>Clear all</button>
+  </div>
+</aside>
+</div>
+{% endif %}
 
 {% if session.get('is_admin') %}
 <section class="panel" aria-labelledby="ships-heading">

@@ -22,9 +22,10 @@
   {% if components %}
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Component</th><th>Category</th><th>Size</th><th>Grade</th><th>Spec</th><th class="number">Qty</th>{% if session.get('is_admin') %}<th class="actions">Actions</th>{% endif %}</tr></thead>
+      <thead><tr><th>Component</th><th>Category</th><th>Size</th><th>Grade</th><th>Spec</th><th class="number">Qty</th>{% if session.get('is_admin') %}<th class="actions">Actions</th>{% else %}<th class="actions">Watchlist</th>{% endif %}</tr></thead>
       <tbody>
       {% for component in components %}
+        {% set pin_group = pin_groups[component.id] %}
         <tr>
           <td data-label="Component"><strong>{{ component.name }}</strong></td>
           <td data-label="Category"><span class="tag">{{ component.category }}</span></td>
@@ -32,7 +33,18 @@
           <td data-label="Grade">{{ component.grade or '—' }}</td>
           <td data-label="Spec">{{ component.spec or '—' }}</td>
           <td data-label="Qty" class="number">{{ component.quantity }}</td>
-          {% if session.get('is_admin') %}<td class="actions"><a href="{{ url_for('component_edit', component_id=component.id) }}">Edit</a></td>{% endif %}
+          {% if session.get('is_admin') %}<td class="actions"><a href="{{ url_for('component_edit', component_id=component.id) }}">Edit</a></td>{% else %}
+          <td class="actions pin-cell">
+            <button type="button" class="pin-button" aria-pressed="false" data-pin-component
+              data-group-id="{{ pin_group.id }}" data-name="{{ pin_group.name }}"
+              data-category="{{ component.category }}" data-size="{{ component.size or '' }}"
+              data-grade="{{ component.grade or '' }}" data-spec="{{ component.spec or '' }}"
+              data-quantity="{{ pin_group.quantity }}" data-sources="{{ pin_group.sources|tojson|forceescape }}"
+              data-primary-ship-url="{{ url_for('public_ship_detail', ship_id=ship.id) }}">
+              <span class="pin-icon" aria-hidden="true">☆</span><span class="pin-label">Pin</span>
+            </button>
+          </td>
+          {% endif %}
         </tr>
       {% endfor %}
       </tbody>

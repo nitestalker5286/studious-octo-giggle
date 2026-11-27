@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Pinned Components · Salvage Tracker{% endblock %}
+{% block content %}
+<section class="page-intro watchlist-intro">
+  <div>
+    <p class="eyebrow">Browser-local watchlist</p>
+    <h1>Pinned Components</h1>
+    <p>Your personal component watchlist is saved only in this browser. No account or database changes are required.</p>
+  </div>
+  <div class="watchlist-header-actions">
+    <span class="pin-count pin-count-hero" data-pin-count aria-label="0 pinned components">0</span>
+    <button type="button" class="button button-secondary" data-clear-pins>Clear all pins</button>
+  </div>
+</section>
+
+<section class="watchlist-storage-warning" data-storage-warning hidden>
+  Browser storage is unavailable. Pins cannot be saved in this browser session.
+</section>
+
+<section class="watchlist-empty panel" data-watchlist-empty>
+  <div class="empty-state">
+    <h2>No pinned components</h2>
+    <p>Pin components from the Component Finder or a ship’s component page.</p>
+    <a class="button" href="{{ url_for('index') }}">Find components</a>
+  </div>
+</section>
+
+<section class="watchlist-grid" data-watchlist-items aria-live="polite"></section>
+{% endblock %}

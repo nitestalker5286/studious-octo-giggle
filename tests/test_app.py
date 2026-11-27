@@ -79,8 +79,9 @@ def test_health_and_empty_viewer_search_page(client):
     assert client.get("/health").get_json() == {"status": "ok"}
     response = client.get("/")
     assert response.status_code == 200
-    assert b"Enter a component name" in response.data
-    assert b"Matching results" not in response.data
+    assert b"Start typing a component name" in response.data
+    assert b"All components" in response.data
+    assert b"No matching components" in response.data
     assert b"Recovered inventory" not in response.data
     assert b"Source ships" not in response.data
     assert b"Add component" not in response.data
@@ -93,6 +94,11 @@ def test_health_and_empty_viewer_search_page(client):
     assert b"Quick category buttons" in response.data
     assert b"data-live-component-search" in response.data
     assert b"app.js" in response.data
+    assert b"Salvage Module" in response.data
+    assert b"Pinned" in response.data
+    assert b"data-pin-count" in response.data
+    assert b"data-home-watchlist" in response.data
+    assert b"Open full watchlist" in response.data
 
 
 def test_viewer_cannot_modify_and_csrf_is_enforced(client):
@@ -153,10 +159,19 @@ def test_public_view_is_search_only_and_returns_matching_results(client):
     post(client, "/admin/logout", {})
 
     landing = client.get("/")
-    assert b"FR-86" not in landing.data
+    assert b"FR-86" in landing.data
+    assert b"Hammerhead" in landing.data
+    assert b"All components" in landing.data
     assert b"Recovered inventory" not in landing.data
     assert b"Source ships" not in landing.data
     assert b"Matching results" not in landing.data
+    assert b"data-pin-component" in landing.data
+    assert b'data-group-id="group-' in landing.data
+    assert b"Saved only in this browser" in landing.data
+
+    explicit_all = client.get("/?category=All&size=All&grade=All&spec=All")
+    assert b"FR-86" in explicit_all.data
+    assert b"All components" in explicit_all.data
 
     assert b"No matching components" in client.get("/?q=Hammerhead").data
 
@@ -171,6 +186,33 @@ def test_public_view_is_search_only_and_returns_matching_results(client):
     export = client.get("/export.csv")
     assert export.status_code == 302
     assert "/admin/login" in export.headers["Location"]
+
+
+def test_salvage_module_category_can_be_added_and_filtered(client, app):
+    login(client)
+    post(client, "/ships/new", {"name": "Vulture", "manufacturer": "Drake", "source": ""})
+    response = post(
+        client,
+        "/components/new",
+        {
+            "ship_id": "1",
+            "name": "Abrade",
+            "category": "Salvage Module",
+            "size": "1",
+            "grade": "",
+            "spec": "",
+            "quantity": "1",
+        },
+    )
+    assert b"Abrade" in response.data
+    assert b"Salvage Module" in response.data
+    with connect(app.config["DATABASE_PATH"]) as connection:
+        row = connection.execute("SELECT * FROM components WHERE name = 'Abrade'").fetchone()
+        assert row["category"] == "Salvage Module"
+        assert row["grade"] is None
+        assert row["spec"] is None
+    filtered = client.get("/?category=Salvage+Module")
+    assert b"Abrade" in filtered.data
 
 
 def test_public_ship_directory_is_alphabetical_and_ship_page_lists_its_components(client, app):
@@ -215,10 +257,76 @@ def test_public_ship_directory_is_alphabetical_and_ship_page_lists_its_component
     assert b"FR-86" not in cutlass.data
     assert b"Quantum Drive" in cutlass.data
     assert b"Edit" not in cutlass.data
+    assert b"data-pin-component" in cutlass.data
+    assert b'data-group-id="group-' in cutlass.data
 
     arrow = client.get(f"/ships/{arrow_id}")
     assert b"No components associated" in arrow.data
     assert client.get("/ships/999999").status_code == 404
+
+
+def test_browser_local_watchlist_page_requires_no_account_or_database_data(client):
+    response = client.get("/watchlist")
+    assert response.status_code == 200
+    assert b"Pinned Components" in response.data
+    assert b"saved only in this browser" in response.data
+    assert b"data-watchlist-items" in response.data
+    assert b"data-watchlist-empty" in response.data
+    assert b"data-clear-pins" in response.data
+    assert b"data-pin-count" in response.data
+
+
+def test_public_duplicate_components_are_grouped_with_expandable_sources(client, app):
+    login(client)
+    ships = [
+        ("Ares Star Fighter INFERNO", "Crusader"),
+        ("Ares Star Fighter ION", "Crusader"),
+        ("Retaliator", "Aegis"),
+        ("Vanguard Warden", "Aegis"),
+    ]
+    with connect(app.config["DATABASE_PATH"]) as connection:
+        for ship_name, manufacturer in ships:
+            ship_id = connection.execute(
+                "INSERT INTO ships(name, manufacturer, source) VALUES (?, ?, ?)",
+                (ship_name, manufacturer, "Salvage Contract"),
+            ).lastrowid
+            connection.execute(
+                """
+                INSERT INTO components(ship_id, name, category, size, grade, spec, quantity)
+                VALUES (?, 'ARCTIC', 'Cooler', '2', 'C', 'MIL', 2)
+                """,
+                (ship_id,),
+            )
+        connection.commit()
+    post(client, "/admin/logout", {})
+
+    response = client.get("/?q=ARCTIC")
+    assert response.status_code == 200
+    assert b"1 component result" in response.data
+    assert b"4 sources" in response.data
+    assert b"Total Qty" in response.data
+    assert b">8<" in response.data
+    for ship_name, _manufacturer in ships:
+        assert ship_name.encode() in response.data
+
+    # Desktop and mobile controls share the same group ID, rather than one pin ID per ship row.
+    import re
+    group_ids = re.findall(rb'data-group-id="([^"]+)"', response.data)
+    assert len(group_ids) == 2
+    assert len(set(group_ids)) == 1
+
+    with connect(app.config["DATABASE_PATH"]) as connection:
+        ship_ids = [
+            connection.execute("SELECT id FROM ships WHERE name = ?", (ship_name,)).fetchone()[0]
+            for ship_name, _manufacturer in ships[:2]
+        ]
+    first = client.get(f"/ships/{ship_ids[0]}")
+    second = client.get(f"/ships/{ship_ids[1]}")
+    first_group = re.search(rb'data-group-id="([^"]+)"', first.data).group(1)
+    second_group = re.search(rb'data-group-id="([^"]+)"', second.data).group(1)
+    assert first_group == second_group == group_ids[0]
+    assert b"Ares Star Fighter INFERNO" in first.data
+    assert b"Vanguard Warden" in first.data
 
 
 def test_csv_export_has_ship_source_and_current_filters(client):
