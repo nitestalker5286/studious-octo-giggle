@@ -1,0 +1,3 @@
+{% extends "base.html" %}
+{% block title %}Not Found · Salvage Tracker{% endblock %}
+{% block content %}<section class="empty-state standalone"><p class="eyebrow">404</p><h1>Record not found</h1><p>The requested ship, component, or page does not exist.</p><a class="button" href="{{ url_for('index') }}">Return to inventory</a></section>{% endblock %}

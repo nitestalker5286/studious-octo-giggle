@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Inventory · Salvage Tracker{% endblock %}
+{% block content %}
+<section class="hero">
+  <div>
+    <p class="eyebrow">Live inventory</p>
+    <h1>Ship salvage, organized.</h1>
+    <p>Search every recovered component and see exactly which ship it came from.</p>
+  </div>
+  <div class="hero-actions">
+    <a class="button button-secondary" href="{{ url_for('export_csv', q=filters.q, ship_id=filters.ship_id, category=filters.category, grade=filters.grade, spec=filters.spec) }}">Export CSV</a>
+    {% if session.get('is_admin') %}
+      <a class="button" href="{{ url_for('component_new') }}">Add component</a>
+    {% endif %}
+  </div>
+</section>
+
+<section class="panel filter-panel" aria-labelledby="filter-heading">
+  <div class="section-heading">
+    <div><p class="eyebrow">Global search</p><h2 id="filter-heading">Find a component</h2></div>
+    {% if filters.q or filters.ship_id or filters.category or filters.grade or filters.spec %}
+      <a href="{{ url_for('index') }}">Clear filters</a>
+    {% endif %}
+  </div>
+  <form method="get" class="filter-grid">
+    <label class="field field-wide">
+      <span>Search database</span>
+      <input type="search" name="q" value="{{ filters.q }}" placeholder="Component, category, ship, manufacturer, or source">
+    </label>
+    <label class="field">
+      <span>Ship</span>
+      <select name="ship_id">
+        <option value="">All ships</option>
+        {% for ship in ships %}<option value="{{ ship.id }}" {% if filters.ship_id == ship.id|string %}selected{% endif %}>{{ ship.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="field">
+      <span>Category</span>
+      <select name="category">
+        <option value="">All categories</option>
+        {% for category in CATEGORY_OPTIONS %}<option {% if filters.category == category %}selected{% endif %}>{{ category }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="field">
+      <span>Grade</span>
+      <select name="grade">
+        <option value="">All grades</option>
+        {% for grade in GRADE_OPTIONS %}<option {% if filters.grade == grade %}selected{% endif %}>{{ grade }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="field">
+      <span>Spec</span>
+      <select name="spec">
+        <option value="">All specs</option>
+        {% for spec in SPEC_OPTIONS %}<option {% if filters.spec == spec %}selected{% endif %}>{{ spec }}</option>{% endfor %}
+      </select>
+    </label>
+    <button class="button" type="submit">Search</button>
+  </form>
+</section>
+
+<section class="stats" aria-label="Inventory totals">
+  <div><strong>{{ ships|length }}</strong><span>Ships</span></div>
+  <div><strong>{{ components|length }}</strong><span>Matching records</span></div>
+  <div><strong>{{ total_units }}</strong><span>Matching units</span></div>
+</section>
+
+<section class="panel" aria-labelledby="components-heading">
+  <div class="section-heading">
+    <div><p class="eyebrow">Recovered inventory</p><h2 id="components-heading">Components</h2></div>
+    {% if session.get('is_admin') %}<a class="button button-small" href="{{ url_for('component_new') }}">Add component</a>{% endif %}
+  </div>
+  {% if components %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Component</th><th>Ship</th><th>Category</th><th>Size</th><th>Grade</th><th>Spec</th><th class="number">Qty</th>{% if session.get('is_admin') %}<th class="actions">Actions</th>{% endif %}</tr></thead>
+      <tbody>
+      {% for component in components %}
+        <tr>
+          <td data-label="Component"><strong>{{ component.name }}</strong></td>
+          <td data-label="Ship"><strong>{{ component.ship_name }}</strong>{% if component.manufacturer %}<small>{{ component.manufacturer }}</small>{% endif %}{% if component.source %}<small>Source: {{ component.source }}</small>{% endif %}</td>
+          <td data-label="Category"><span class="tag">{{ component.category }}</span></td>
+          <td data-label="Size">{{ component.size or '—' }}</td>
+          <td data-label="Grade">{{ component.grade or '—' }}</td>
+          <td data-label="Spec">{{ component.spec or '—' }}</td>
+          <td data-label="Qty" class="number">{{ component.quantity }}</td>
+          {% if session.get('is_admin') %}
+          <td class="actions">
+            <a href="{{ url_for('component_edit', component_id=component.id) }}">Edit</a>
+            <form action="{{ url_for('component_delete', component_id=component.id) }}" method="post" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="danger-link" type="submit">Delete</button>
+            </form>
+          </td>
+          {% endif %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="empty-state"><h3>No components found</h3><p>Try clearing the filters, or add the first component.</p></div>
+  {% endif %}
+</section>
+
+<section class="panel" aria-labelledby="ships-heading">
+  <div class="section-heading">
+    <div><p class="eyebrow">Source ships</p><h2 id="ships-heading">Ships</h2></div>
+    {% if session.get('is_admin') %}<a class="button button-small" href="{{ url_for('ship_new') }}">Add ship</a>{% endif %}
+  </div>
+  {% if ships %}
+  <div class="ship-grid">
+    {% for ship in ships %}
+      <article class="ship-card">
+        <div><h3>{{ ship.name }}</h3><p>{{ ship.manufacturer or 'Manufacturer not set' }}</p></div>
+        {% if ship.source %}<p class="source"><span>Ship source</span>{{ ship.source }}</p>{% endif %}
+        <div class="ship-meta"><span>{{ ship.component_records }} records</span><span>{{ ship.component_units }} units</span></div>
+        {% if session.get('is_admin') %}
+        <div class="card-actions">
+          <a href="{{ url_for('component_new', ship_id=ship.id) }}">Add component</a>
+          <a href="{{ url_for('ship_edit', ship_id=ship.id) }}">Edit</a>
+          <form action="{{ url_for('ship_delete', ship_id=ship.id) }}" method="post" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="danger-link" type="submit">Delete</button>
+          </form>
+        </div>
+        {% endif %}
+      </article>
+    {% endfor %}
+  </div>
+  {% else %}
+    <div class="empty-state"><h3>No ships yet</h3><p>{% if session.get('is_admin') %}Add a ship to start tracking recovered components.{% else %}The administrator has not added any ships yet.{% endif %}</p></div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Admin Sign In · Salvage Tracker{% endblock %}
+{% block content %}
+<section class="login-shell">
+  <form method="post" class="panel form-card login-card">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div><p class="eyebrow">Protected access</p><h1>Administrator sign in</h1><p>Viewers can search and export inventory. The administrator can add, edit, and delete records.</p></div>
+    {% if admin_configured %}
+      <label class="field"><span>Admin password</span><input type="password" name="password" required autocomplete="current-password" autofocus></label>
+      <button class="button" type="submit">Sign in</button>
+    {% else %}
+      <div class="message message-warning">Admin access is disabled until the <code>ADMIN_PASSWORD</code> environment variable is set.</div>
+      <a class="button button-secondary" href="{{ url_for('index') }}">Return to inventory</a>
+    {% endif %}
+  </form>
+</section>
+{% endblock %}
