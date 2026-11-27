@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Ships · Salvage Tracker{% endblock %}
+{% block content %}
+<section class="page-intro">
+  <p class="eyebrow">Public ship directory</p>
+  <h1>Ships</h1>
+  <p>Select a ship to see every component associated with it. Ships are listed in alphabetical order.</p>
+</section>
+
+{% if ships %}
+<section class="public-ship-grid" aria-label="Ships in alphabetical order">
+  {% for ship in ships %}
+    <a class="public-ship-card" href="{{ url_for('public_ship_detail', ship_id=ship.id) }}">
+      <div>
+        <h2>{{ ship.name }}</h2>
+        <p>{{ ship.manufacturer or 'Manufacturer not set' }}</p>
+      </div>
+      {% if ship.source %}<p class="public-ship-source"><span>Ship source</span>{{ ship.source }}</p>{% endif %}
+      <div class="ship-meta">
+        <span>{{ ship.component_records }} component record{% if ship.component_records != 1 %}s{% endif %}</span>
+        <span>{{ ship.component_units }} total unit{% if ship.component_units != 1 %}s{% endif %}</span>
+      </div>
+      <span class="view-ship">View components <span aria-hidden="true">→</span></span>
+    </a>
+  {% endfor %}
+</section>
+{% else %}
+<section class="panel empty-state"><h2>No ships available</h2><p>The administrator has not added any ships yet.</p></section>
+{% endif %}
+{% endblock %}

@@ -157,7 +157,6 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     def index() -> str:
         filters = {
             "q": request.args.get("q", "").strip(),
-            "ship_id": request.args.get("ship_id", "").strip(),
             "category": request.args.get("category", "").strip(),
             "size": request.args.get("size", "").strip(),
             "grade": request.args.get("grade", "").strip(),
@@ -175,7 +174,12 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                 ORDER BY s.name COLLATE NOCASE
                 """
             ).fetchall()
-        components = inventory_rows(app.config["DATABASE_PATH"], filters)
+        is_admin = bool(session.get("is_admin"))
+        components = (
+            inventory_rows(app.config["DATABASE_PATH"], filters)
+            if is_admin or has_filters
+            else []
+        )
         total_units = sum(row["quantity"] for row in components)
         return render_template(
             "index.html",
@@ -185,6 +189,33 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             has_filters=has_filters,
             total_units=total_units,
             admin_configured=bool(app.config["ADMIN_PASSWORD"]),
+        )
+
+    @app.get("/ships")
+    def public_ships() -> str:
+        with connect(app.config["DATABASE_PATH"]) as connection:
+            ships = connection.execute(
+                """
+                SELECT s.id, s.name, s.manufacturer, s.source,
+                       COUNT(c.id) AS component_records,
+                       COALESCE(SUM(c.quantity), 0) AS component_units
+                FROM ships s LEFT JOIN components c ON c.ship_id = s.id
+                GROUP BY s.id, s.name, s.manufacturer, s.source
+                ORDER BY s.name COLLATE NOCASE, s.id
+                """
+            ).fetchall()
+        return render_template("public_ships.html", ships=ships)
+
+    @app.get("/ships/<int:ship_id>")
+    def public_ship_detail(ship_id: int) -> str:
+        ship = get_ship_or_404(ship_id)
+        components = inventory_rows(app.config["DATABASE_PATH"], {"ship_id": str(ship_id)})
+        total_units = sum(row["quantity"] for row in components)
+        return render_template(
+            "public_ship_detail.html",
+            ship=ship,
+            components=components,
+            total_units=total_units,
         )
 
     @app.route("/admin/login", methods=["GET", "POST"])

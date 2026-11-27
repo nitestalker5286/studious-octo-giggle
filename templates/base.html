@@ -14,7 +14,8 @@
       <span><strong>Salvage Tracker</strong><small>Ship component inventory</small></span>
     </a>
     <nav aria-label="Primary navigation">
-      <a href="{{ url_for('index') }}">Inventory</a>
+      <a href="{{ url_for('index') }}">{% if session.get('is_admin') %}Inventory{% else %}Component Finder{% endif %}</a>
+      <a href="{{ url_for('public_ships') }}">Browse Ships</a>
       {% if session.get('is_admin') %}
         <a href="{{ url_for('ship_new') }}">Add ship</a>
         <a href="{{ url_for('component_new') }}">Add component</a>

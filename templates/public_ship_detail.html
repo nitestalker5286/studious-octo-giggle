@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ ship.name }} · Ships · Salvage Tracker{% endblock %}
+{% block content %}
+<a class="back-link" href="{{ url_for('public_ships') }}">← All ships</a>
+<section class="ship-detail-header">
+  <div>
+    <p class="eyebrow">Ship components</p>
+    <h1>{{ ship.name }}</h1>
+    <p>{{ ship.manufacturer or 'Manufacturer not set' }}{% if ship.source %}<span class="detail-separator">•</span> Source: {{ ship.source }}{% endif %}</p>
+  </div>
+  <div class="detail-totals" aria-label="Component totals">
+    <div><strong>{{ components|length }}</strong><span>Records</span></div>
+    <div><strong>{{ total_units }}</strong><span>Units</span></div>
+  </div>
+</section>
+
+<section class="panel" aria-labelledby="ship-components-heading">
+  <div class="section-heading">
+    <div><p class="eyebrow">Associated inventory</p><h2 id="ship-components-heading">Components</h2></div>
+    {% if session.get('is_admin') %}<a class="button button-small" href="{{ url_for('component_new', ship_id=ship.id) }}">Add component</a>{% endif %}
+  </div>
+  {% if components %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Component</th><th>Category</th><th>Size</th><th>Grade</th><th>Spec</th><th class="number">Qty</th>{% if session.get('is_admin') %}<th class="actions">Actions</th>{% endif %}</tr></thead>
+      <tbody>
+      {% for component in components %}
+        <tr>
+          <td data-label="Component"><strong>{{ component.name }}</strong></td>
+          <td data-label="Category"><span class="tag">{{ component.category }}</span></td>
+          <td data-label="Size">{{ component.size or '—' }}</td>
+          <td data-label="Grade">{{ component.grade or '—' }}</td>
+          <td data-label="Spec">{{ component.spec or '—' }}</td>
+          <td data-label="Qty" class="number">{{ component.quantity }}</td>
+          {% if session.get('is_admin') %}<td class="actions"><a href="{{ url_for('component_edit', component_id=component.id) }}">Edit</a></td>{% endif %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="empty-state"><h3>No components associated</h3><p>This ship does not have any component records yet.</p></div>
+  {% endif %}
+</section>
+{% endblock %}

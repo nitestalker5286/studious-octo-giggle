@@ -9,7 +9,7 @@
     <p>Search every recovered component and manage the ships it came from.</p>
   </div>
   <div class="hero-actions">
-    <a class="button button-secondary" href="{{ url_for('export_csv', q=filters.q, ship_id=filters.ship_id, category=filters.category, size=filters.size, grade=filters.grade, spec=filters.spec) }}">Export CSV</a>
+    <a class="button button-secondary" href="{{ url_for('export_csv', q=filters.q, category=filters.category, size=filters.size, grade=filters.grade, spec=filters.spec) }}">Export CSV</a>
     <a class="button" href="{{ url_for('component_new') }}">Add component</a>
   </div>
 </section>
@@ -17,20 +17,13 @@
 
 <section class="panel filter-panel" aria-labelledby="filter-heading">
   <div class="section-heading">
-    <div><p class="eyebrow">Global search</p><h1 id="filter-heading" class="search-title">Find a component</h1></div>
+    <div><p class="eyebrow">Public search</p><h1 id="filter-heading" class="search-title">Component Finder</h1></div>
     {% if has_filters %}<a href="{{ url_for('index') }}">Clear filters</a>{% endif %}
   </div>
   <form method="get" class="filter-grid">
     <label class="field field-wide">
-      <span>Search database</span>
-      <input type="search" name="q" value="{{ filters.q }}" placeholder="Component, category, size, ship, manufacturer, or source">
-    </label>
-    <label class="field">
-      <span>Ship</span>
-      <select name="ship_id">
-        <option value="">All ships</option>
-        {% for ship in ships %}<option value="{{ ship.id }}" {% if filters.ship_id == ship.id|string %}selected{% endif %}>{{ ship.name }}</option>{% endfor %}
-      </select>
+      <span>Component Name</span>
+      <input type="search" name="q" value="{{ filters.q }}" placeholder="Enter a component name">
     </label>
     <label class="field">
       <span>Category</span>
@@ -76,7 +69,7 @@
       <div><p class="eyebrow">Recovered inventory</p><h2 id="components-heading">Components</h2></div>
       <a class="button button-small" href="{{ url_for('component_new') }}">Add component</a>
     {% else %}
-      <div><p class="eyebrow">Global search</p><h2 id="components-heading">Matching results</h2></div>
+      <div><p class="eyebrow">Component Finder</p><h2 id="components-heading">Matching results</h2></div>
       <span class="result-count">{{ components|length }} record{% if components|length != 1 %}s{% endif %}</span>
     {% endif %}
   </div>

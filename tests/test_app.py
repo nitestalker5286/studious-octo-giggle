@@ -84,6 +84,12 @@ def test_health_and_empty_viewer_search_page(client):
     assert b"Recovered inventory" not in response.data
     assert b"Source ships" not in response.data
     assert b"Add component" not in response.data
+    assert b"Component Name" in response.data
+    assert b">Category<" in response.data
+    assert b">Size<" in response.data
+    assert b">Grade<" in response.data
+    assert b">Spec<" in response.data
+    assert b">Ship<" not in response.data
 
 
 def test_viewer_cannot_modify_and_csrf_is_enforced(client):
@@ -102,8 +108,8 @@ def test_admin_crud_search_filters_and_optional_fields(client, app, tmp_path):
     assert b"Recovered inventory" in response.data
     assert b"Source ships" in response.data
 
-    # Size participates in both the broad global query and its own exact filter.
-    assert b"FR-86" in client.get("/?q=3").data
+    # Component Name supports partial matching; Size has its own exact filter.
+    assert b"FR-86" in client.get("/?q=FR").data
     assert b"FR-86" in client.get("/?size=3").data
     assert b"No matching components" in client.get("/?size=2").data
 
@@ -149,6 +155,8 @@ def test_public_view_is_search_only_and_returns_matching_results(client):
     assert b"Source ships" not in landing.data
     assert b"Matching results" not in landing.data
 
+    assert b"No matching components" in client.get("/?q=Hammerhead").data
+
     results = client.get("/?size=3")
     assert b"Matching results" in results.data
     assert b"FR-86" in results.data
@@ -160,6 +168,45 @@ def test_public_view_is_search_only_and_returns_matching_results(client):
     export = client.get("/export.csv")
     assert export.status_code == 302
     assert "/admin/login" in export.headers["Location"]
+
+
+def test_public_ship_directory_is_alphabetical_and_ship_page_lists_its_components(client, app):
+    seed(client)
+    with connect(app.config["DATABASE_PATH"]) as connection:
+        arrow_id = connection.execute(
+            "INSERT INTO ships(name, manufacturer, source) VALUES (?, ?, ?)",
+            ("Arrow", "Anvil", "Bounties"),
+        ).lastrowid
+        cutlass_id = connection.execute(
+            "INSERT INTO ships(name, manufacturer, source) VALUES (?, ?, ?)",
+            ("Cutlass Black", "Drake", "Salvage contracts"),
+        ).lastrowid
+        connection.execute(
+            """
+            INSERT INTO components(ship_id, name, category, size, grade, spec, quantity)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (cutlass_id, "Crossfield", "Quantum Drive", "2", "B", "CIV", 1),
+        )
+        connection.commit()
+    post(client, "/admin/logout", {})
+
+    directory = client.get("/ships")
+    assert directory.status_code == 200
+    assert directory.data.index(b"Arrow") < directory.data.index(b"Cutlass Black") < directory.data.index(b"Hammerhead")
+    assert f'/ships/{cutlass_id}'.encode() in directory.data
+
+    cutlass = client.get(f"/ships/{cutlass_id}")
+    assert cutlass.status_code == 200
+    assert b"Cutlass Black" in cutlass.data
+    assert b"Crossfield" in cutlass.data
+    assert b"FR-86" not in cutlass.data
+    assert b"Quantum Drive" in cutlass.data
+    assert b"Edit" not in cutlass.data
+
+    arrow = client.get(f"/ships/{arrow_id}")
+    assert b"No components associated" in arrow.data
+    assert client.get("/ships/999999").status_code == 404
 
 
 def test_csv_export_has_ship_source_and_current_filters(client):

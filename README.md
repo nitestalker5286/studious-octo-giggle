@@ -9,9 +9,10 @@ A responsive Flask + SQLite web app for tracking salvaged ships and their recove
 - Grade options: blank, A, B, C, D
 - Spec options: blank, MIL, CIV, CMP, IND, STH
 - Categories include Guns, Missiles, Radar, and the original ship-component categories
-- Global component search across component, category, **size**, ship, manufacturer, and source
-- Dedicated filters for ship, category, **size**, grade, and spec
-- Search-only public view: viewers see search controls and matching results, not full ship or component inventory lists
+- Clean public **Component Finder** with Component Name, Category, Size, Grade, and Spec fields
+- Partial Component Name matching plus exact Category, Size, Grade, and Spec filters
+- Public alphabetical ship directory; selecting a ship shows every component associated with it
+- Search-only public home view: viewers see finder controls and matching results, not the full admin inventory lists
 - Admin inventory and ship-management views with full add, edit, and delete functionality
 - Admin-only CSV export; exported rows include Ship Source and honor all active filters, including Size
 - Viewer/admin separation with password-protected changes
@@ -103,7 +104,7 @@ In Railway, open **Settings → Networking → Generate Domain**. Railway will r
 
 ### 6. Sign in
 
-- Anyone with the URL can use the global search and see only matching component results.
+- Anyone with the URL can use the Component Finder, see only matching search results, or browse the alphabetical public ship directory.
 - Select **Admin** and use `ADMIN_PASSWORD` to view the complete inventories, export CSV, and add, edit, or delete records.
 
 ## Move an existing desktop database
