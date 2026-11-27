@@ -49,6 +49,99 @@ def _add_column(connection: sqlite3.Connection, table: str, name: str, definitio
         connection.execute(f'ALTER TABLE "{table}" ADD COLUMN "{name}" {definition}')
 
 
+def _component_write_values(
+    connection: sqlite3.Connection,
+    ship_id: int,
+    name: str,
+    category: str,
+    size: str,
+    grade: str | None,
+    spec: str | None,
+    quantity: int,
+) -> dict[str, Any]:
+    """Return values for both the web schema and any retained desktop aliases.
+
+    SQLite cannot remove a legacy NOT NULL constraint with ALTER TABLE.  Railway
+    databases upgraded in place can therefore still require component_name and
+    component_type even after the current name/category columns are added.  Build
+    writes from the columns that actually exist so those databases remain usable
+    without rebuilding (and risking) the user's persistent inventory.
+    """
+    columns = _columns(connection, "components")
+    values: dict[str, Any] = {
+        "ship_id": ship_id,
+        "name": name,
+        "category": category,
+        "size": size,
+        "grade": grade,
+        "spec": spec,
+        "quantity": quantity,
+    }
+    for alias in ("component_name", "component"):
+        if alias in columns:
+            values[alias] = name
+    for alias in ("component_type", "type"):
+        if alias in columns:
+            values[alias] = category
+    if "qty" in columns:
+        values["qty"] = quantity
+    ship_aliases = columns.intersection(("ship", "ship_name"))
+    if ship_aliases:
+        ship = connection.execute("SELECT name FROM ships WHERE id = ?", (ship_id,)).fetchone()
+        ship_name = ship["name"] if ship is not None else ""
+        for alias in ship_aliases:
+            values[alias] = ship_name
+    return {column: value for column, value in values.items() if column in columns}
+
+
+def insert_component(
+    connection: sqlite3.Connection,
+    ship_id: int,
+    name: str,
+    category: str,
+    size: str,
+    grade: str | None,
+    spec: str | None,
+    quantity: int,
+) -> int:
+    """Insert a component while satisfying retained legacy column constraints."""
+    values = _component_write_values(
+        connection, ship_id, name, category, size, grade, spec, quantity
+    )
+    columns = list(values)
+    quoted_columns = ", ".join(f'"{column}"' for column in columns)
+    placeholders = ", ".join("?" for _ in columns)
+    cursor = connection.execute(
+        f"INSERT INTO components ({quoted_columns}) VALUES ({placeholders})",
+        [values[column] for column in columns],
+    )
+    return int(cursor.lastrowid)
+
+
+def update_component(
+    connection: sqlite3.Connection,
+    component_id: int,
+    ship_id: int,
+    name: str,
+    category: str,
+    size: str,
+    grade: str | None,
+    spec: str | None,
+    quantity: int,
+) -> None:
+    """Update current and retained legacy component columns together."""
+    values = _component_write_values(
+        connection, ship_id, name, category, size, grade, spec, quantity
+    )
+    assignments = [f'"{column}" = ?' for column in values]
+    if "updated_at" in _columns(connection, "components"):
+        assignments.append('"updated_at" = CURRENT_TIMESTAMP')
+    connection.execute(
+        f"UPDATE components SET {', '.join(assignments)} WHERE id = ?",
+        [*values.values(), component_id],
+    )
+
+
 def _make_optional_component_fields_nullable(connection: sqlite3.Connection) -> None:
     """Rebuild older web schemas whose Grade/Spec columns were incorrectly NOT NULL."""
     info = {row["name"]: row for row in connection.execute('PRAGMA table_info("components")')}
@@ -297,6 +390,36 @@ def initialize_database(database_path: str) -> None:
                             f'UPDATE components SET "{canonical}" = "{legacy}" WHERE {empty_condition} AND "{legacy}" IS NOT NULL'
                         )
                     break
+
+        # Keep retained desktop columns usable for external/older consumers too.
+        # These statements are safe to repeat on every Railway restart.
+        for legacy in ("component_name", "component"):
+            if legacy in component_columns:
+                connection.execute(
+                    f'''UPDATE components SET "{legacy}" = name
+                        WHERE ("{legacy}" IS NULL OR TRIM("{legacy}") = '')
+                          AND name IS NOT NULL'''
+                )
+        for legacy in ("component_type", "type"):
+            if legacy in component_columns:
+                connection.execute(
+                    f'''UPDATE components SET "{legacy}" = category
+                        WHERE ("{legacy}" IS NULL OR TRIM("{legacy}") = '')
+                          AND category IS NOT NULL'''
+                )
+        if "qty" in component_columns:
+            connection.execute(
+                "UPDATE components SET qty = quantity "
+                "WHERE (qty IS NULL OR CAST(qty AS INTEGER) < 1) AND quantity IS NOT NULL"
+            )
+        for legacy in ("ship", "ship_name"):
+            if legacy in component_columns:
+                connection.execute(
+                    f'''UPDATE components
+                        SET "{legacy}" = (SELECT name FROM ships WHERE ships.id = components.ship_id)
+                        WHERE ("{legacy}" IS NULL OR TRIM("{legacy}") = '')
+                          AND ship_id IS NOT NULL'''
+                )
 
         # If an older schema stored the ship name directly, connect it to a ship row.
         for legacy_ship_column in ("ship", "ship_name"):

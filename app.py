@@ -28,9 +28,11 @@ from database import (
     enrich_ship_rows,
     group_inventory_rows,
     initialize_database,
+    insert_component,
     inventory_rows,
     replace_ship_sources,
     transaction,
+    update_component,
     write_inventory_csv,
 )
 
@@ -423,13 +425,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             try:
                 values = validate_component_form(app.config["DATABASE_PATH"])
                 with transaction(app.config["DATABASE_PATH"]) as connection:
-                    connection.execute(
-                        """
-                        INSERT INTO components (ship_id, name, category, size, grade, spec, quantity)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        values,
-                    )
+                    insert_component(connection, *values)
                 after_change()
                 flash(f"Component “{values[1]}” added.", "success")
                 if request.form.get("save_action") == "add_another":
@@ -461,15 +457,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             try:
                 values = validate_component_form(app.config["DATABASE_PATH"])
                 with transaction(app.config["DATABASE_PATH"]) as connection:
-                    connection.execute(
-                        """
-                        UPDATE components
-                        SET ship_id = ?, name = ?, category = ?, size = ?, grade = ?, spec = ?,
-                            quantity = ?, updated_at = CURRENT_TIMESTAMP
-                        WHERE id = ?
-                        """,
-                        (*values, component_id),
-                    )
+                    update_component(connection, component_id, *values)
                 after_change()
                 flash(f"Component “{values[1]}” updated.", "success")
                 return redirect(url_for("index"))

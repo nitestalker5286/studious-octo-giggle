@@ -126,7 +126,7 @@ In Railway, open **Settings → Networking → Generate Domain**. Railway will r
 4. Upload/copy it to the Railway volume at `/data/salvage_tracker.db` **before** normal use.
 5. Redeploy or restart the service. Startup migration preserves the legacy Ship Source, copies it into the multi-source relationship without duplication, adds other expected fields, and changes legacy `COMP` spec values to `CMP`.
 
-The converter recognizes common legacy columns such as `ship_name`, `ship_source`, `component_name`, `component_type`, and `qty`. If the old desktop app used a substantially different schema, keep the backup and compare it before replacing the production database.
+The converter recognizes common legacy columns such as `ship_name`, `ship_source`, `component_name`, `component_type`, and `qty`. If a migrated table retains those legacy columns or their `NOT NULL` constraints, component creates and edits keep both the legacy and current columns synchronized. The compatibility migration is idempotent and is safe to run on every Railway restart. If the old desktop app used a substantially different schema, keep the backup and compare it before replacing the production database.
 
 ## Operational notes
 

@@ -536,3 +536,103 @@ def test_ship_sources_migration_is_safe_idempotent_and_preserves_legacy_value(tm
     assert [(row["ship_id"], row["source"]) for row in rows] == [(4, "Salvage Contract")]
     assert legacy == "Salvage Contract"
     assert "idx_ship_sources_unique_nocase" in indexes
+
+
+def test_hybrid_legacy_component_constraints_support_create_and_edit(tmp_path):
+    """Railway upgrades must satisfy both retained legacy and current columns."""
+    database_path = tmp_path / "hybrid_legacy.db"
+    connection = sqlite3.connect(database_path)
+    connection.executescript(
+        """
+        CREATE TABLE ships (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+            manufacturer TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO ships(id, name, manufacturer, source)
+        VALUES (1, 'Reclaimer', 'Aegis', 'Salvage Contract');
+        CREATE TABLE components (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ship_id INTEGER,
+            component_name TEXT NOT NULL,
+            component_type TEXT NOT NULL,
+            name TEXT NOT NULL DEFAULT '',
+            category TEXT NOT NULL DEFAULT 'Other',
+            size TEXT NOT NULL DEFAULT '',
+            grade TEXT,
+            spec TEXT,
+            quantity INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO components(
+            id, ship_id, component_name, component_type, name, category, size, grade, spec, quantity
+        ) VALUES (8, 1, 'Existing Item', 'Utility Item', '', 'Other', '1', '', '', 3);
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    # Repeated startup must preserve and backfill the existing inventory.
+    initialize_database(str(database_path))
+    initialize_database(str(database_path))
+    application = create_app(
+        {
+            "TESTING": True,
+            "SECRET_KEY": "test-secret",
+            "ADMIN_PASSWORD": "correct horse battery staple",
+            "DATABASE_PATH": str(database_path),
+            "AUTO_EXPORT_PATH": str(tmp_path / "hybrid.csv"),
+            "SESSION_COOKIE_SECURE": False,
+        }
+    )
+    hybrid_client = application.test_client()
+    login(hybrid_client)
+
+    created = post(
+        hybrid_client,
+        "/components/new",
+        {
+            "ship_id": "1",
+            "name": "Chimalli",
+            "category": "Shield Generator",
+            "size": "2",
+            "grade": "",
+            "spec": "",
+            "quantity": "2",
+        },
+    )
+    assert created.status_code == 200
+    assert b"Chimalli" in created.data
+
+    with connect(str(database_path)) as migrated:
+        existing = migrated.execute("SELECT * FROM components WHERE id = 8").fetchone()
+        added = migrated.execute("SELECT * FROM components WHERE name = 'Chimalli'").fetchone()
+        assert existing["name"] == existing["component_name"] == "Existing Item"
+        assert existing["category"] == existing["component_type"] == "Utility Item"
+        assert added["component_name"] == added["name"] == "Chimalli"
+        assert added["component_type"] == added["category"] == "Shield Generator"
+        assert added["grade"] is None
+        assert added["spec"] is None
+        added_id = added["id"]
+
+    edited = post(
+        hybrid_client,
+        f"/components/{added_id}/edit",
+        {
+            "ship_id": "1",
+            "name": "Chimalli Updated",
+            "category": "Power Plant",
+            "size": "2",
+            "grade": "A",
+            "spec": "MIL",
+            "quantity": "4",
+        },
+    )
+    assert edited.status_code == 200
+    with connect(str(database_path)) as migrated:
+        updated = migrated.execute("SELECT * FROM components WHERE id = ?", (added_id,)).fetchone()
+        assert updated["component_name"] == updated["name"] == "Chimalli Updated"
+        assert updated["component_type"] == updated["category"] == "Power Plant"
+        assert updated["quantity"] == 4
