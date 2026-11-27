@@ -154,8 +154,8 @@ def initialize_database(database_path: str) -> None:
         connection.execute(
             "UPDATE components SET spec = 'CMP' WHERE UPPER(TRIM(spec)) IN ('COMP', 'CMP')"
         )
-        connection.execute("UPDATE components SET grade = '' WHERE grade IS NULL")
-        connection.execute("UPDATE components SET spec = '' WHERE spec IS NULL")
+        connection.execute("UPDATE components SET grade = NULL WHERE grade = ''")
+        connection.execute("UPDATE components SET spec = NULL WHERE spec = ''")
         connection.execute("UPDATE components SET quantity = 1 WHERE quantity IS NULL OR quantity < 1")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_ships_name_nocase ON ships(name COLLATE NOCASE)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_components_ship_id ON components(ship_id)")
@@ -226,3 +226,5 @@ def write_inventory_csv(database_path: str, output_path: str) -> None:
     finally:
         if os.path.exists(temporary_name):
             os.unlink(temporary_name)
+
+
