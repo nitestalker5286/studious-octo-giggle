@@ -88,6 +88,125 @@ def _make_optional_component_fields_nullable(connection: sqlite3.Connection) -> 
     connection.execute("ALTER TABLE components_nullable RENAME TO components")
 
 
+def _initialize_ship_sources(connection: sqlite3.Connection) -> None:
+    """Create the multi-source relationship and migrate the legacy source exactly once."""
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ship_sources (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ship_id INTEGER NOT NULL,
+            source TEXT NOT NULL CHECK (TRIM(source) <> ''),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (ship_id) REFERENCES ships(id) ON DELETE CASCADE
+        )
+        """
+    )
+    connection.execute("DELETE FROM ship_sources WHERE TRIM(source) = ''")
+    connection.execute(
+        """
+        DELETE FROM ship_sources
+        WHERE id NOT IN (
+            SELECT MIN(id) FROM ship_sources
+            GROUP BY ship_id, LOWER(TRIM(source))
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_ship_sources_unique_nocase
+        ON ship_sources(ship_id, source COLLATE NOCASE)
+        """
+    )
+    # INSERT OR IGNORE plus the unique index makes every startup/redeploy idempotent.
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO ship_sources (ship_id, source)
+        SELECT id, TRIM(source)
+        FROM ships
+        WHERE source IS NOT NULL AND TRIM(source) <> ''
+        """
+    )
+
+
+def ship_sources_map(
+    connection: sqlite3.Connection, ship_ids: list[int] | None = None
+) -> dict[int, list[str]]:
+    values: list[Any] = []
+    where = ""
+    if ship_ids is not None:
+        if not ship_ids:
+            return {}
+        placeholders = ",".join("?" for _ in ship_ids)
+        where = f"WHERE ship_id IN ({placeholders})"
+        values.extend(ship_ids)
+    rows = connection.execute(
+        f"""
+        SELECT ship_id, source FROM ship_sources
+        {where}
+        ORDER BY source COLLATE NOCASE, id
+        """,
+        values,
+    ).fetchall()
+    result: dict[int, list[str]] = {}
+    for row in rows:
+        result.setdefault(int(row["ship_id"]), []).append(row["source"])
+    # Preserve visibility for legacy/external writers that still populate only ships.source.
+    legacy_where = ""
+    legacy_values: list[Any] = []
+    if ship_ids is not None:
+        placeholders = ",".join("?" for _ in ship_ids)
+        legacy_where = f"WHERE id IN ({placeholders})"
+        legacy_values.extend(ship_ids)
+    for row in connection.execute(
+        f"SELECT id, source FROM ships {legacy_where}", legacy_values
+    ).fetchall():
+        ship_id = int(row["id"])
+        legacy_source = (row["source"] or "").strip()
+        if legacy_source and not result.get(ship_id):
+            result[ship_id] = [legacy_source]
+    return result
+
+
+def replace_ship_sources(
+    connection: sqlite3.Connection, ship_id: int, sources: list[str]
+) -> list[str]:
+    """Replace a ship's source relationships with a normalized, case-insensitive set."""
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in sources:
+        source = str(raw).strip()
+        key = source.casefold()
+        if not source or key in seen:
+            continue
+        seen.add(key)
+        normalized.append(source)
+    connection.execute("DELETE FROM ship_sources WHERE ship_id = ?", (ship_id,))
+    connection.executemany(
+        "INSERT INTO ship_sources (ship_id, source) VALUES (?, ?)",
+        [(ship_id, source) for source in normalized],
+    )
+    # Keep the old column synchronized for legacy desktop/database consumers.
+    connection.execute(
+        "UPDATE ships SET source = ? WHERE id = ?",
+        (normalized[0] if normalized else "", ship_id),
+    )
+    return normalized
+
+
+def enrich_ship_rows(
+    connection: sqlite3.Connection, rows: list[sqlite3.Row]
+) -> list[dict[str, Any]]:
+    """Attach every related source to ship query rows without multiplying aggregates."""
+    sources = ship_sources_map(connection, [int(row["id"]) for row in rows])
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        item["sources"] = sources.get(int(row["id"]), [])
+        item["source"] = item["sources"][0] if item["sources"] else ""
+        result.append(item)
+    return result
+
+
 def initialize_database(database_path: str) -> None:
     """Create the schema and upgrade common desktop-tracker schemas in place."""
     with transaction(database_path) as connection:
@@ -142,6 +261,7 @@ def initialize_database(database_path: str) -> None:
             connection.execute(
                 "UPDATE ships SET source = ship_source WHERE (source IS NULL OR TRIM(source) = '') AND ship_source IS NOT NULL"
             )
+        _initialize_ship_sources(connection)
 
         for name, definition in (
             ("ship_id", "INTEGER"),
@@ -205,9 +325,10 @@ def initialize_database(database_path: str) -> None:
         connection.execute("CREATE INDEX IF NOT EXISTS idx_components_ship_id ON components(ship_id)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_components_name ON components(name COLLATE NOCASE)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_components_category ON components(category COLLATE NOCASE)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_ship_sources_ship_id ON ship_sources(ship_id)")
 
 
-def inventory_rows(database_path: str, filters: dict[str, str] | None = None) -> list[sqlite3.Row]:
+def inventory_rows(database_path: str, filters: dict[str, str] | None = None) -> list[dict[str, Any]]:
     filters = filters or {}
     clauses: list[str] = []
     values: list[Any] = []
@@ -235,14 +356,22 @@ def inventory_rows(database_path: str, filters: dict[str, str] | None = None) ->
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     query = f"""
         SELECT c.id, c.ship_id, c.name, c.category, c.size, c.grade, c.spec, c.quantity,
-               s.name AS ship_name, s.manufacturer, s.source
+               s.name AS ship_name, s.manufacturer
         FROM components c
         JOIN ships s ON s.id = c.ship_id
         {where}
         ORDER BY c.name COLLATE NOCASE, s.name COLLATE NOCASE, c.id
     """
     with connect(database_path) as connection:
-        return connection.execute(query, values).fetchall()
+        rows = connection.execute(query, values).fetchall()
+        sources = ship_sources_map(connection, sorted({int(row["ship_id"]) for row in rows}))
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            item["sources"] = sources.get(int(row["ship_id"]), [])
+            item["source"] = " | ".join(item["sources"])
+            result.append(item)
+        return result
 
 
 def _group_value(value: Any) -> str:
@@ -258,7 +387,7 @@ def component_group_id(name: Any, category: Any, size: Any, grade: Any, spec: An
     return f"group-{encoded}"
 
 
-def group_inventory_rows(rows: list[sqlite3.Row]) -> list[dict[str, Any]]:
+def group_inventory_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Group duplicate public component rows and aggregate their per-ship sources."""
     groups: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -282,14 +411,15 @@ def group_inventory_rows(rows: list[sqlite3.Row]) -> list[dict[str, Any]]:
         quantity = int(row["quantity"] or 0)
         group["quantity"] += quantity
         group["record_ids"].append(int(row["id"]))
-        source_key = (int(row["ship_id"]), row["source"] or "")
+        source_key = int(row["ship_id"])
         source = group["_sources"].setdefault(
             source_key,
             {
                 "ship_id": int(row["ship_id"]),
                 "ship_name": row["ship_name"],
                 "manufacturer": row["manufacturer"] or "",
-                "source": row["source"] or "",
+                "sources": list(row.get("sources") or []),
+                "source": " | ".join(row.get("sources") or []),
                 "quantity": 0,
             },
         )
@@ -301,11 +431,11 @@ def group_inventory_rows(rows: list[sqlite3.Row]) -> list[dict[str, Any]]:
             group.pop("_sources").values(),
             key=lambda source: (
                 _group_value(source["ship_name"]),
-                _group_value(source["source"]),
                 source["ship_id"],
             ),
         )
-        group["source_count"] = len(group["sources"])
+        group["ship_count"] = len(group["sources"])
+        group["source_count"] = sum(len(source["sources"]) for source in group["sources"])
         result.append(group)
     return sorted(
         result,
@@ -331,7 +461,7 @@ def write_inventory_csv(database_path: str, output_path: str) -> None:
         with os.fdopen(fd, "w", newline="", encoding="utf-8-sig") as handle:
             writer = csv.writer(handle)
             writer.writerow(
-                ["Ship", "Manufacturer", "Ship Source", "Component", "Category", "Size", "Grade", "Spec", "Qty"]
+                ["Ship", "Manufacturer", "Ship Sources", "Component", "Category", "Size", "Grade", "Spec", "Qty"]
             )
             for row in rows:
                 writer.writerow(

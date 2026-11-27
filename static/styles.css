@@ -116,6 +116,9 @@ tr:last-child td { border-bottom: 0; }
 .public-ship-card p { color: var(--muted); }
 .public-ship-source { flex: 1; }
 .public-ship-source span { display: block; color: var(--text); font-size: .7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 3px; }
+.ship-source-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.ship-source-tag { display: inline-flex !important; width: fit-content; padding: 4px 8px; border: 1px solid var(--line); border-radius: 99px; color: #bcd0d9 !important; background: #09151d; font-size: .7rem !important; font-weight: 700 !important; text-transform: none !important; letter-spacing: 0 !important; margin: 0 !important; }
+.ship-detail-sources { margin-top: 12px; color: var(--muted); font-size: .8rem; }
 .public-ship-card .ship-meta { margin-top: auto; }
 .view-ship { display: inline-flex; justify-content: space-between; align-items: center; color: var(--accent); margin-top: 16px; font-size: .86rem; font-weight: 800; }
 .ship-directory-intro { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, .55fr); gap: 36px; align-items: end; }
@@ -202,6 +205,13 @@ tr:last-child td { border-bottom: 0; }
 .form-intro { padding-top: 30px; }
 .form-intro h1, .login-card h1, .standalone h1 { font-size: clamp(2.1rem, 5vw, 3.5rem); }
 .form-card { padding: 28px; display: grid; gap: 20px; }
+.source-editor { min-width: 0; margin: 0; padding: 18px; border: 1px solid var(--line); border-radius: 12px; }
+.source-editor-heading { display: flex; justify-content: space-between; align-items: start; gap: 16px; margin-bottom: 14px; }
+.source-editor legend { color: var(--text); font-weight: 800; }
+.source-editor-heading p { color: var(--muted); font-size: .78rem; line-height: 1.45; margin: 5px 0 0; }
+.source-editor-list { display: grid; gap: 10px; }
+.source-editor-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; }
+.source-remove { min-height: 44px; }
 .two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .login-shell { width: min(520px, 100%); margin: 7vh auto 0; }
 .login-card { gap: 24px; }
@@ -254,6 +264,9 @@ code { color: var(--accent); }
   .detail-totals > div { flex: 1; }
   .form-shell { gap: 20px; }
   .form-intro { padding-top: 0; }
+  .source-editor-heading { align-items: stretch; flex-direction: column; }
+  .source-editor-row { grid-template-columns: 1fr; }
+  .source-remove { justify-self: start; min-height: auto; }
   .public-results-table { display: none; }
   .mobile-result-cards { display: grid; gap: 10px; padding: 0 14px 14px; }
   .source-list { min-width: 0; }

@@ -6,7 +6,8 @@
   <div>
     <p class="eyebrow">Ship components</p>
     <h1>{{ ship.name }}</h1>
-    <p>{{ ship.manufacturer or 'Manufacturer not set' }}{% if ship.source %}<span class="detail-separator">•</span> Source: {{ ship.source }}{% endif %}</p>
+    <p>{{ ship.manufacturer or 'Manufacturer not set' }}</p>
+    {% if ship.sources %}<div class="ship-detail-sources"><strong>Sources</strong><div class="ship-source-tags">{% for source in ship.sources %}<span class="ship-source-tag">{{ source }}</span>{% endfor %}</div></div>{% endif %}
   </div>
   <div class="detail-totals" aria-label="Component totals">
     <div><strong>{{ components|length }}</strong><span>Records</span></div>

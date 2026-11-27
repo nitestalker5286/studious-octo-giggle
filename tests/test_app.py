@@ -338,7 +338,7 @@ def test_csv_export_has_ship_source_and_current_filters(client):
     response = client.get("/export.csv?size=3")
     assert response.status_code == 200
     rows = list(csv.reader(io.StringIO(response.data.decode("utf-8-sig"))))
-    assert rows[0] == ["Ship", "Manufacturer", "Ship Source", "Component", "Category", "Size", "Grade", "Spec", "Qty"]
+    assert rows[0] == ["Ship", "Manufacturer", "Ship Sources", "Component", "Category", "Size", "Grade", "Spec", "Qty"]
     assert rows[1] == ["Hammerhead", "Aegis", "ERT contracts", "FR-86", "Shield Generator", "3", "A", "MIL", "2"]
 
 
@@ -368,6 +368,59 @@ def test_save_and_add_another_preserves_defaults_and_stores_optional_nulls(clien
         row = connection.execute("SELECT grade, spec FROM components WHERE name = 'Avalanche'").fetchone()
         assert row["grade"] is None
         assert row["spec"] is None
+
+
+def test_admin_can_manage_multiple_ship_sources_and_public_views_show_all(client, app):
+    login(client)
+    response = post(
+        client,
+        "/ships/new",
+        {
+            "name": "Vulture",
+            "manufacturer": "Drake",
+            "sources": ["Salvage Contract", "Crusader Academy"],
+        },
+    )
+    assert b"Vulture" in response.data
+    with connect(app.config["DATABASE_PATH"]) as connection:
+        ship_id = connection.execute("SELECT id FROM ships WHERE name = 'Vulture'").fetchone()[0]
+        sources = [
+            row[0]
+            for row in connection.execute(
+                "SELECT source FROM ship_sources WHERE ship_id = ? ORDER BY source", (ship_id,)
+            )
+        ]
+        legacy_source = connection.execute(
+            "SELECT source FROM ships WHERE id = ?", (ship_id,)
+        ).fetchone()[0]
+    assert sources == ["Crusader Academy", "Salvage Contract"]
+    assert legacy_source == "Salvage Contract"
+
+    edited = post(
+        client,
+        f"/ships/{ship_id}/edit",
+        {
+            "name": "Vulture",
+            "manufacturer": "Drake",
+            "sources": ["Crusader Academy", "ERT Wreck", "crusader academy"],
+        },
+    )
+    assert b"ERT Wreck" in edited.data
+    with connect(app.config["DATABASE_PATH"]) as connection:
+        sources = [
+            row[0]
+            for row in connection.execute(
+                "SELECT source FROM ship_sources WHERE ship_id = ? ORDER BY source", (ship_id,)
+            )
+        ]
+    assert sources == ["Crusader Academy", "ERT Wreck"]
+
+    post(client, "/admin/logout", {})
+    directory = client.get("/ships")
+    detail = client.get(f"/ships/{ship_id}")
+    for expected in (b"Crusader Academy", b"ERT Wreck"):
+        assert expected in directory.data
+        assert expected in detail.data
 
 
 def test_ship_with_components_cannot_be_deleted(client):
@@ -444,3 +497,42 @@ def test_existing_not_null_grade_spec_schema_is_migrated_without_data_loss(tmp_p
         assert row["spec"] is None
         assert info["grade"]["notnull"] == 0
         assert info["spec"]["notnull"] == 0
+
+
+def test_ship_sources_migration_is_safe_idempotent_and_preserves_legacy_value(tmp_path):
+    database_path = tmp_path / "legacy_sources.db"
+    connection = sqlite3.connect(database_path)
+    connection.executescript(
+        """
+        CREATE TABLE ships (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+            manufacturer TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO ships(id, name, manufacturer, source)
+        VALUES (4, 'Reclaimer', 'Aegis', 'Salvage Contract');
+        CREATE TABLE components (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, ship_id INTEGER NOT NULL,
+            name TEXT NOT NULL, category TEXT NOT NULL, size TEXT NOT NULL DEFAULT '',
+            grade TEXT, spec TEXT, quantity INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    initialize_database(str(database_path))
+    initialize_database(str(database_path))
+    initialize_database(str(database_path))
+    with connect(str(database_path)) as migrated:
+        rows = migrated.execute(
+            "SELECT ship_id, source FROM ship_sources ORDER BY id"
+        ).fetchall()
+        legacy = migrated.execute("SELECT source FROM ships WHERE id = 4").fetchone()[0]
+        indexes = [row[1] for row in migrated.execute("PRAGMA index_list(ship_sources)")]
+    assert [(row["ship_id"], row["source"]) for row in rows] == [(4, "Salvage Contract")]
+    assert legacy == "Salvage Contract"
+    assert "idx_ship_sources_unique_nocase" in indexes

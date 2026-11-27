@@ -2,12 +2,34 @@
 {% block title %}{{ 'Edit' if ship else 'Add' }} Ship · Salvage Tracker{% endblock %}
 {% block content %}
 <section class="form-shell">
-  <div class="form-intro"><p class="eyebrow">Ship record</p><h1>{{ 'Edit ship' if ship else 'Add a ship' }}</h1><p>Track the ship model, manufacturer, and where the ship can be found.</p></div>
+  <div class="form-intro"><p class="eyebrow">Ship record</p><h1>{{ 'Edit ship' if ship else 'Add a ship' }}</h1><p>Track the ship model, manufacturer, and every place or activity where the ship can be found.</p></div>
   <form method="post" class="panel form-card">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label class="field"><span>Ship name <em>Required</em></span><input name="name" maxlength="120" required value="{{ request.form.get('name', ship.name if ship else '') }}" placeholder="Hammerhead"></label>
     <label class="field"><span>Manufacturer</span><input name="manufacturer" maxlength="120" value="{{ request.form.get('manufacturer', ship.manufacturer if ship else '') }}" placeholder="Aegis Dynamics"></label>
-    <label class="field"><span>Ship source</span><input name="source" maxlength="200" value="{{ request.form.get('source', ship.source if ship else '') }}" placeholder="Where this ship can be found"></label>
+
+    <fieldset class="source-editor" data-source-editor>
+      <div class="source-editor-heading">
+        <div><legend>Ship sources</legend><p>Add every location, contract, or activity where this ship is available.</p></div>
+        <button type="button" class="button button-secondary button-small" data-add-source>Add source</button>
+      </div>
+      <div class="source-editor-list" data-source-list>
+        {% set values = source_values if source_values else [''] %}
+        {% for source in values %}
+        <div class="source-editor-row" data-source-row>
+          <label class="field"><span>Source {{ loop.index }}</span><input name="sources" maxlength="200" value="{{ source }}" placeholder="Salvage Contract"></label>
+          <button type="button" class="danger-link source-remove" data-remove-source>Remove</button>
+        </div>
+        {% endfor %}
+      </div>
+      <template data-source-template>
+        <div class="source-editor-row" data-source-row>
+          <label class="field"><span>Source</span><input name="sources" maxlength="200" placeholder="Salvage Contract"></label>
+          <button type="button" class="danger-link source-remove" data-remove-source>Remove</button>
+        </div>
+      </template>
+    </fieldset>
+
     <div class="form-actions"><a class="button button-secondary" href="{{ url_for('index') }}">Cancel</a><button class="button" type="submit">{{ 'Save changes' if ship else 'Add ship' }}</button></div>
   </form>
 </section>

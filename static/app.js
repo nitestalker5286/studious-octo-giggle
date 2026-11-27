@@ -83,11 +83,16 @@
 
   function normalizeSource(source, fallbackUrl = "") {
     const shipId = String(source.ship_id || source.shipId || "");
+    let shipSources = Array.isArray(source.sources)
+      ? source.sources.map((value) => String(value).trim()).filter(Boolean)
+      : [];
+    if (!shipSources.length && source.source) shipSources = [String(source.source).trim()];
     return {
       shipId,
       shipName: source.ship_name || source.shipName || "Unknown ship",
       manufacturer: source.manufacturer || "",
-      source: source.source || "",
+      sources: [...new Set(shipSources)],
+      source: shipSources.join(" | "),
       quantity: Number(source.quantity || 0),
       shipUrl: source.shipUrl || (shipId ? `/ships/${shipId}` : fallbackUrl || "#"),
     };
@@ -128,13 +133,16 @@
         existing.notes = raw.notes.slice(0, 500);
       }
       const sourceMap = new Map(
-        existing.sources.map((source) => [`${source.shipId}\x1f${source.source}`, source])
+        existing.sources.map((source) => [source.shipId, source])
       );
       sources.forEach((source) => {
-        const key = `${source.shipId}\x1f${source.source}`;
+        const key = source.shipId;
         const current = sourceMap.get(key);
-        if (current) current.quantity += source.quantity;
-        else sourceMap.set(key, source);
+        if (current) {
+          current.quantity += source.quantity;
+          current.sources = [...new Set([...(current.sources || []), ...(source.sources || [])])];
+          current.source = current.sources.join(" | ");
+        } else sourceMap.set(key, source);
       });
       existing.sources = [...sourceMap.values()].sort((a, b) =>
         a.shipName.localeCompare(b.shipName, undefined, { sensitivity: "base" })
@@ -262,12 +270,20 @@
     return badge;
   }
 
+  function sourceCount(item) {
+    return item.sources.reduce(
+      (total, source) => total + (source.sources && source.sources.length ? source.sources.length : 0),
+      0
+    );
+  }
+
   function makeMiniWatchlistItem(item) {
     const article = makeElement("article", "watchlist-mini-item");
     const body = makeElement("div", "watchlist-mini-body");
     const name = makeElement("a", "watchlist-mini-name", item.name);
     name.href = item.primaryShipUrl || "#";
-    const sourceLabel = `${item.sources.length} source${item.sources.length === 1 ? "" : "s"}`;
+    const count = sourceCount(item);
+    const sourceLabel = `${count} source${count === 1 ? "" : "s"}`;
     const meta = makeElement("span", "watchlist-mini-meta", `${sourceLabel} · ${item.category}`);
     body.append(name, meta);
     if (item.priority !== "none") body.append(makePriorityBadge(item.priority));
@@ -301,7 +317,8 @@
       }
     );
     const details = makeElement("details", "sources-disclosure watchlist-sources");
-    details.append(makeElement("summary", "", `${item.sources.length} source${item.sources.length === 1 ? "" : "s"}`));
+    const count = sourceCount(item);
+    details.append(makeElement("summary", "", `${count} source${count === 1 ? "" : "s"}`));
     const sourceList = makeElement("div", "source-list");
     item.sources.forEach((source) => {
       const link = makeElement("a", "source-item");
@@ -309,7 +326,9 @@
       const sourceBody = makeElement("span", "");
       sourceBody.append(makeElement("strong", "", source.shipName));
       if (source.manufacturer) sourceBody.append(makeElement("small", "", source.manufacturer));
-      if (source.source) sourceBody.append(makeElement("small", "", `Source: ${source.source}`));
+      (source.sources || []).forEach((shipSource) =>
+        sourceBody.append(makeElement("small", "", `Source: ${shipSource}`))
+      );
       link.append(sourceBody, makeElement("strong", "source-quantity", `Qty ${source.quantity}`));
       sourceList.append(link);
     });
@@ -418,8 +437,45 @@
     }
   }
 
+  function renumberSourceRows(editor) {
+    editor.querySelectorAll("[data-source-row]").forEach((row, index) => {
+      const label = row.querySelector(".field > span");
+      if (label) label.textContent = `Source ${index + 1}`;
+    });
+  }
+
+  function addSourceRow(editor) {
+    const template = editor.querySelector("[data-source-template]");
+    const list = editor.querySelector("[data-source-list]");
+    if (!template || !list) return;
+    list.append(template.content.cloneNode(true));
+    renumberSourceRows(editor);
+    const inputs = list.querySelectorAll('input[name="sources"]');
+    if (inputs.length) inputs[inputs.length - 1].focus();
+  }
+
   document.addEventListener("click", (event) => {
     if (!(event.target instanceof Element)) return;
+    const addSource = event.target.closest("[data-add-source]");
+    if (addSource) {
+      const editor = addSource.closest("[data-source-editor]");
+      if (editor) addSourceRow(editor);
+      return;
+    }
+    const removeSource = event.target.closest("[data-remove-source]");
+    if (removeSource) {
+      const editor = removeSource.closest("[data-source-editor]");
+      const row = removeSource.closest("[data-source-row]");
+      if (editor && row) {
+        const rows = editor.querySelectorAll("[data-source-row]");
+        if (rows.length === 1) {
+          const input = row.querySelector('input[name="sources"]');
+          if (input) input.value = "";
+        } else row.remove();
+        renumberSourceRows(editor);
+      }
+      return;
+    }
     const pinButton = event.target.closest("[data-pin-component]");
     if (pinButton) {
       togglePin(pinButton);
@@ -531,5 +587,6 @@
   window.addEventListener("storage", (event) => {
     if (event.key === STORAGE_KEY || event.key === SORT_KEY) refreshWatchlistUI();
   });
+  document.querySelectorAll("[data-source-editor]").forEach(renumberSourceRows);
   refreshWatchlistUI();
 })();

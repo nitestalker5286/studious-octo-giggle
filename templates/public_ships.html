@@ -22,7 +22,7 @@
   {% for ship in ships %}
     <a class="public-ship-card" href="{{ url_for('public_ship_detail', ship_id=ship.id) }}" data-ship-name="{{ ship.name|lower }}" data-manufacturer="{{ ship.manufacturer|lower }}">
       <div><h2>{{ ship.name }}</h2><p>{{ ship.manufacturer or 'Manufacturer not set' }}</p></div>
-      {% if ship.source %}<p class="public-ship-source"><span>Ship source</span>{{ ship.source }}</p>{% endif %}
+      {% if ship.sources %}<div class="public-ship-source"><span>Ship sources</span><div class="ship-source-tags">{% for source in ship.sources %}<span class="ship-source-tag">{{ source }}</span>{% endfor %}</div></div>{% endif %}
       <div class="ship-meta"><span>{{ ship.component_records }} component record{% if ship.component_records != 1 %}s{% endif %}</span><span>{{ ship.component_units }} total unit{% if ship.component_units != 1 %}s{% endif %}</span></div>
       <span class="view-ship">View components <span aria-hidden="true">→</span></span>
     </a>

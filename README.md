@@ -4,7 +4,7 @@ A responsive Flask + SQLite web app for tracking salvaged ships and their recove
 
 ## Included features
 
-- Ships: name, manufacturer, and optional **Ship Source** (no ship quantity column)
+- Ships: name, manufacturer, and zero or more **Ship Sources** (no ship quantity column)
 - Components: name, category, size, optional grade, optional spec, and quantity
 - Grade options: blank, A, B, C, D
 - Spec options: blank, MIL, CIV, CMP, IND, STH
@@ -20,12 +20,14 @@ A responsive Flask + SQLite web app for tracking salvaged ships and their recove
 - Responsive right-side pinned panel beside the search controls; grouped results render below at full page width, and the panel moves below the finder on smaller screens
 - Dedicated Pinned Components view; pins are stored only in the user's browser with no account or database migration
 - Public ship directory with live ship/manufacturer search and A–Z navigation; selecting a ship shows every associated component
+- Admin multi-source editor for adding and removing multiple sources on each ship
 - Public home view shows all component items by default and narrows the results through the finder, without exposing admin management controls
 - Admin inventory and ship-management views with full add, edit, and delete functionality
 - Admin **Save + Add Another** workflow that carries the selected ship and component defaults forward
-- Admin-only CSV export; exported rows include Ship Source and honor all active filters, including Size
+- Admin-only CSV export; exported rows include all Ship Sources and honor all active filters, including Size
 - Viewer/admin separation with password-protected changes
 - Automatic migration for the expected desktop SQLite schema and common legacy column names
+- Safe, idempotent `ship_sources` migration: every existing `ships.source` value is copied once without duplication on Railway restarts or redeploys
 - Optional automatic CSV snapshot after every database change
 - Railway health check and Gunicorn production server configuration
 - Responsive desktop/mobile interface
@@ -122,7 +124,7 @@ In Railway, open **Settings → Networking → Generate Domain**. Railway will r
 2. Make a backup copy of its `.db` file.
 3. Rename the copy to `salvage_tracker.db` if needed.
 4. Upload/copy it to the Railway volume at `/data/salvage_tracker.db` **before** normal use.
-5. Redeploy or restart the service. Startup migration adds missing Ship Source, Grade, Spec, and other expected fields without deleting records. It also changes legacy `COMP` spec values to `CMP`.
+5. Redeploy or restart the service. Startup migration preserves the legacy Ship Source, copies it into the multi-source relationship without duplication, adds other expected fields, and changes legacy `COMP` spec values to `CMP`.
 
 The converter recognizes common legacy columns such as `ship_name`, `ship_source`, `component_name`, `component_type`, and `qty`. If the old desktop app used a substantially different schema, keep the backup and compare it before replacing the production database.
 

@@ -25,9 +25,11 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 from database import (
     connect,
+    enrich_ship_rows,
     group_inventory_rows,
     initialize_database,
     inventory_rows,
+    replace_ship_sources,
     transaction,
     write_inventory_csv,
 )
@@ -134,10 +136,11 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
     def get_ship_or_404(ship_id: int):
         with connect(app.config["DATABASE_PATH"]) as connection:
-            ship = connection.execute("SELECT * FROM ships WHERE id = ?", (ship_id,)).fetchone()
-        if ship is None:
+            row = connection.execute("SELECT * FROM ships WHERE id = ?", (ship_id,)).fetchone()
+            ships = enrich_ship_rows(connection, [row] if row is not None else [])
+        if not ships:
             abort(404)
-        return ship
+        return ships[0]
 
     def get_component_or_404(component_id: int):
         with connect(app.config["DATABASE_PATH"]) as connection:
@@ -161,6 +164,27 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             raise ValueError(f"{name.replace('_', ' ').title()} must be {max_length} characters or fewer.")
         return value
 
+    def form_sources() -> list[str]:
+        raw_sources = request.form.getlist("sources")
+        if not raw_sources and "source" in request.form:
+            raw_sources = [request.form.get("source", "")]
+        sources: list[str] = []
+        seen: set[str] = set()
+        for raw in raw_sources:
+            source = raw.strip()
+            if not source:
+                continue
+            if len(source) > 200:
+                raise ValueError("Each ship source must be 200 characters or fewer.")
+            key = source.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            sources.append(source)
+        if len(sources) > 50:
+            raise ValueError("A ship can have no more than 50 sources.")
+        return sources
+
     @app.get("/")
     def index() -> str:
         def filter_value(name: str) -> str:
@@ -176,16 +200,17 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         }
         has_filters = any(filters.values())
         with connect(app.config["DATABASE_PATH"]) as connection:
-            ships = connection.execute(
+            ship_rows = connection.execute(
                 """
-                SELECT s.id, s.name, s.manufacturer, s.source,
+                SELECT s.id, s.name, s.manufacturer,
                        COUNT(c.id) AS component_records,
                        COALESCE(SUM(c.quantity), 0) AS component_units
                 FROM ships s LEFT JOIN components c ON c.ship_id = s.id
-                GROUP BY s.id, s.name, s.manufacturer, s.source
+                GROUP BY s.id, s.name, s.manufacturer
                 ORDER BY s.name COLLATE NOCASE
                 """
             ).fetchall()
+            ships = enrich_ship_rows(connection, ship_rows)
             size_options = [
                 row["size"]
                 for row in connection.execute(
@@ -224,25 +249,30 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         clauses: list[str] = []
         values: list[str] = []
         if query:
-            clauses.append("(s.name LIKE ? COLLATE NOCASE OR s.manufacturer LIKE ? COLLATE NOCASE)")
-            values.extend([f"%{query}%", f"%{query}%"])
+            clauses.append(
+                "(s.name LIKE ? COLLATE NOCASE OR s.manufacturer LIKE ? COLLATE NOCASE "
+                "OR EXISTS (SELECT 1 FROM ship_sources ss WHERE ss.ship_id = s.id "
+                "AND ss.source LIKE ? COLLATE NOCASE))"
+            )
+            values.extend([f"%{query}%", f"%{query}%", f"%{query}%"])
         if letter:
             clauses.append("UPPER(SUBSTR(TRIM(s.name), 1, 1)) = ?")
             values.append(letter)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         with connect(app.config["DATABASE_PATH"]) as connection:
-            ships = connection.execute(
+            ship_rows = connection.execute(
                 f"""
-                SELECT s.id, s.name, s.manufacturer, s.source,
+                SELECT s.id, s.name, s.manufacturer,
                        COUNT(c.id) AS component_records,
                        COALESCE(SUM(c.quantity), 0) AS component_units
                 FROM ships s LEFT JOIN components c ON c.ship_id = s.id
                 {where}
-                GROUP BY s.id, s.name, s.manufacturer, s.source
+                GROUP BY s.id, s.name, s.manufacturer
                 ORDER BY s.name COLLATE NOCASE, s.id
                 """,
                 values,
             ).fetchall()
+            ships = enrich_ship_rows(connection, ship_rows)
         return render_template(
             "public_ships.html",
             ships=ships,
@@ -301,17 +331,18 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             try:
                 name = form_text("name", 120, required=True)
                 manufacturer = form_text("manufacturer", 120)
-                source = form_text("source", 200)
+                sources = form_sources()
                 with transaction(app.config["DATABASE_PATH"]) as connection:
                     duplicate = connection.execute(
                         "SELECT 1 FROM ships WHERE name = ? COLLATE NOCASE", (name,)
                     ).fetchone()
                     if duplicate:
                         raise ValueError("A ship with that name already exists.")
-                    connection.execute(
-                        "INSERT INTO ships (name, manufacturer, source) VALUES (?, ?, ?)",
-                        (name, manufacturer, source),
+                    cursor = connection.execute(
+                        "INSERT INTO ships (name, manufacturer, source) VALUES (?, ?, '')",
+                        (name, manufacturer),
                     )
+                    replace_ship_sources(connection, int(cursor.lastrowid), sources)
                 after_change()
                 flash(f"Ship “{name}” added.", "success")
                 return redirect(url_for("index"))
@@ -322,7 +353,8 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                     flash("A ship with that name already exists.", "error")
                 else:
                     raise
-        return render_template("ship_form.html", ship=None)
+        source_values = request.form.getlist("sources") if request.method == "POST" else []
+        return render_template("ship_form.html", ship=None, source_values=source_values)
 
     @app.route("/ships/<int:ship_id>/edit", methods=["GET", "POST"])
     @admin_required
@@ -332,7 +364,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             try:
                 name = form_text("name", 120, required=True)
                 manufacturer = form_text("manufacturer", 120)
-                source = form_text("source", 200)
+                sources = form_sources()
                 with transaction(app.config["DATABASE_PATH"]) as connection:
                     duplicate = connection.execute(
                         "SELECT 1 FROM ships WHERE name = ? COLLATE NOCASE AND id <> ?",
@@ -342,11 +374,12 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                         raise ValueError("A ship with that name already exists.")
                     connection.execute(
                         """
-                        UPDATE ships SET name = ?, manufacturer = ?, source = ?, updated_at = CURRENT_TIMESTAMP
+                        UPDATE ships SET name = ?, manufacturer = ?, updated_at = CURRENT_TIMESTAMP
                         WHERE id = ?
                         """,
-                        (name, manufacturer, source, ship_id),
+                        (name, manufacturer, ship_id),
                     )
+                    replace_ship_sources(connection, ship_id, sources)
                 after_change()
                 flash(f"Ship “{name}” updated.", "success")
                 return redirect(url_for("index"))
@@ -357,7 +390,10 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                     flash("A ship with that name already exists.", "error")
                 else:
                     raise
-        return render_template("ship_form.html", ship=ship)
+        source_values = (
+            request.form.getlist("sources") if request.method == "POST" else ship["sources"]
+        )
+        return render_template("ship_form.html", ship=ship, source_values=source_values)
 
     @app.post("/ships/<int:ship_id>/delete")
     @admin_required
@@ -495,7 +531,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         buffer = io.StringIO(newline="")
         writer = csv.writer(buffer)
         writer.writerow(
-            ["Ship", "Manufacturer", "Ship Source", "Component", "Category", "Size", "Grade", "Spec", "Qty"]
+            ["Ship", "Manufacturer", "Ship Sources", "Component", "Category", "Size", "Grade", "Spec", "Qty"]
         )
         for row in rows:
             writer.writerow(
