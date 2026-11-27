@@ -18,7 +18,7 @@
 <section class="panel" aria-labelledby="ship-components-heading">
   <div class="section-heading">
     <div><p class="eyebrow">Associated inventory</p><h2 id="ship-components-heading">Components</h2></div>
-    {% if session.get('is_admin') %}<a class="button button-small" href="{{ url_for('component_new', ship_id=ship.id) }}">Add component</a>{% endif %}
+    <div class="section-actions"><a class="button button-secondary button-small" href="{{ url_for('submit_change', target_type='Ship', ship_id=ship.id) }}">Submit ship update</a>{% if session.get('is_admin') %}<a class="button button-small" href="{{ url_for('component_new', ship_id=ship.id) }}">Add component</a>{% endif %}</div>
   </div>
   {% if components %}
   <div class="table-wrap">
@@ -36,6 +36,7 @@
           <td data-label="Qty" class="number">{{ component.quantity }}</td>
           {% if session.get('is_admin') %}<td class="actions"><a href="{{ url_for('component_edit', component_id=component.id) }}">Edit</a></td>{% else %}
           <td class="actions pin-cell">
+             <a class="submit-context-link" href="{{ url_for('submit_change', target_type='Component', component_id=component.id) }}">Update</a>
             <button type="button" class="pin-button" aria-pressed="false" data-pin-component
               data-group-id="{{ pin_group.id }}" data-name="{{ pin_group.name }}"
               data-category="{{ component.category }}" data-size="{{ component.size or '' }}"

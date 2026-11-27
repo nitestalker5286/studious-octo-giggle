@@ -109,7 +109,7 @@
       <a class="button button-small" href="{{ url_for('component_new') }}">Add component</a>
     {% else %}
       <div><p class="eyebrow">Component Finder</p><h2 id="components-heading">{% if has_filters %}Matching results{% else %}All components{% endif %}</h2></div>
-      <span class="result-count">{{ components|length }} component result{% if components|length != 1 %}s{% endif %}</span>
+      <div class="result-heading-actions"><span class="result-count">{{ components|length }} component result{% if components|length != 1 %}s{% endif %}</span><a class="button button-secondary button-small" href="{{ url_for('submit_change', target_type='Component') }}">Submit change</a></div>
     {% endif %}
   </div>
   {% if components %}
@@ -166,6 +166,7 @@
             </details>
           </td>
           <td class="actions pin-cell">
+            <a class="submit-context-link" href="{{ url_for('submit_change', target_type='Component', component_id=component.record_ids[0]) }}">Update</a>
             <button type="button" class="pin-button" aria-pressed="false" data-pin-component
               data-group-id="{{ component.id }}" data-name="{{ component.name }}"
               data-category="{{ component.category }}" data-size="{{ component.size or '' }}"
@@ -191,6 +192,7 @@
         data-primary-ship-url="{{ url_for('public_ship_detail', ship_id=component.sources[0].ship_id) }}"
         aria-label="Pin {{ component.name }}"><span class="pin-icon" aria-hidden="true">☆</span><span class="pin-label visually-hidden">Pin</span></button></div></div>
       <dl class="result-facts"><div><dt>Size</dt><dd>{{ component.size or '—' }}</dd></div><div><dt>Grade</dt><dd>{{ component.grade or '—' }}</dd></div><div><dt>Spec</dt><dd>{{ component.spec or '—' }}</dd></div></dl>
+      <div class="mobile-card-actions"><a href="{{ url_for('submit_change', target_type='Component', component_id=component.record_ids[0]) }}">Submit update</a></div>
       <details class="sources-disclosure mobile-sources">
         <summary>{{ component.source_count }} source{% if component.source_count != 1 %}s{% endif %}</summary>
         <div class="source-list">

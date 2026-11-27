@@ -53,6 +53,9 @@ CATEGORY_OPTIONS = (
 )
 GRADE_OPTIONS = ("A", "B", "C", "D")
 SPEC_OPTIONS = ("MIL", "CIV", "CMP", "IND", "STH")
+CHANGE_REQUEST_TYPES = ("Correction", "Addition", "Removal", "Other")
+CHANGE_TARGET_TYPES = ("Component", "Ship", "General")
+CHANGE_REQUEST_STATUSES = ("pending", "approved", "rejected", "resolved")
 F = TypeVar("F", bound=Callable[..., Any])
 
 
@@ -97,6 +100,19 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     app.jinja_env.globals["CATEGORY_OPTIONS"] = CATEGORY_OPTIONS
     app.jinja_env.globals["GRADE_OPTIONS"] = GRADE_OPTIONS
     app.jinja_env.globals["SPEC_OPTIONS"] = SPEC_OPTIONS
+    app.jinja_env.globals["CHANGE_REQUEST_TYPES"] = CHANGE_REQUEST_TYPES
+    app.jinja_env.globals["CHANGE_TARGET_TYPES"] = CHANGE_TARGET_TYPES
+    app.jinja_env.globals["CHANGE_REQUEST_STATUSES"] = CHANGE_REQUEST_STATUSES
+
+    @app.context_processor
+    def navigation_context() -> dict[str, int]:
+        if not session.get("is_admin"):
+            return {"pending_change_request_count": 0}
+        with connect(app.config["DATABASE_PATH"]) as connection:
+            count = connection.execute(
+                "SELECT COUNT(*) FROM change_requests WHERE status = 'pending'"
+            ).fetchone()[0]
+        return {"pending_change_request_count": int(count)}
 
     @app.before_request
     def verify_csrf() -> None:
@@ -241,6 +257,189 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     @app.get("/watchlist")
     def watchlist() -> str:
         return render_template("watchlist.html")
+
+    def change_request_context() -> tuple[list[sqlite3.Row], list[sqlite3.Row]]:
+        with connect(app.config["DATABASE_PATH"]) as connection:
+            ships = connection.execute(
+                "SELECT id, name, manufacturer FROM ships ORDER BY name COLLATE NOCASE"
+            ).fetchall()
+            components = connection.execute(
+                """
+                SELECT c.id, c.name, c.category, c.size, c.grade, c.spec,
+                       s.id AS ship_id, s.name AS ship_name
+                FROM components c JOIN ships s ON s.id = c.ship_id
+                ORDER BY c.name COLLATE NOCASE, s.name COLLATE NOCASE, c.id
+                """
+            ).fetchall()
+        return ships, components
+
+    @app.route("/submit-change", methods=["GET", "POST"])
+    def submit_change() -> Any:
+        ships, components = change_request_context()
+        if request.method == "POST":
+            try:
+                request_type = request.form.get("request_type", "").strip()
+                target_type = request.form.get("target_type", "").strip()
+                if request_type not in CHANGE_REQUEST_TYPES:
+                    raise ValueError("Select a valid request type.")
+                if target_type not in CHANGE_TARGET_TYPES:
+                    raise ValueError("Select Component, Ship, or General.")
+                if request.form.get("website", "").strip():
+                    # Honeypot fields are ignored as a successful submission.
+                    return redirect(url_for("change_request_thanks"))
+
+                ship_id: int | None = None
+                component_id: int | None = None
+                subject_label = "General inventory request"
+                raw_ship_id = request.form.get("ship_id", "").strip()
+                raw_component_id = request.form.get("component_id", "").strip()
+                with connect(app.config["DATABASE_PATH"]) as connection:
+                    if target_type == "Ship" and raw_ship_id:
+                        try:
+                            ship_id = int(raw_ship_id)
+                        except ValueError as error:
+                            raise ValueError("Select a valid ship.") from error
+                        ship = connection.execute(
+                            "SELECT id, name, manufacturer FROM ships WHERE id = ?", (ship_id,)
+                        ).fetchone()
+                        if ship is None:
+                            raise ValueError("Select a valid ship.")
+                        subject_label = ship["name"]
+                        if ship["manufacturer"]:
+                            subject_label += f" · {ship['manufacturer']}"
+                    elif target_type == "Component" and raw_component_id:
+                        try:
+                            component_id = int(raw_component_id)
+                        except ValueError as error:
+                            raise ValueError("Select a valid component.") from error
+                        component = connection.execute(
+                            """
+                            SELECT c.id, c.ship_id, c.name, c.category, c.size, c.grade, c.spec,
+                                   s.name AS ship_name
+                            FROM components c JOIN ships s ON s.id = c.ship_id
+                            WHERE c.id = ?
+                            """,
+                            (component_id,),
+                        ).fetchone()
+                        if component is None:
+                            raise ValueError("Select a valid component.")
+                        ship_id = int(component["ship_id"])
+                        attributes = [component["category"]]
+                        for value in (component["size"], component["grade"], component["spec"]):
+                            if value:
+                                attributes.append(str(value))
+                        subject_label = (
+                            f"{component['name']} · {component['ship_name']}"
+                            f" · {' / '.join(attributes)}"
+                        )
+                    elif request_type != "Addition" and target_type != "General":
+                        raise ValueError(f"Select the {target_type.lower()} this request concerns.")
+
+                proposed_change = form_text("proposed_change", 4000, required=True)
+                notes = form_text("notes", 2000) or None
+                custom_subject = form_text("subject_name", 240)
+                if custom_subject:
+                    subject_label = custom_subject
+                elif request_type == "Addition" and target_type != "General" and not (
+                    ship_id or component_id
+                ):
+                    raise ValueError("Enter a name for the proposed addition.")
+
+                with transaction(app.config["DATABASE_PATH"]) as connection:
+                    connection.execute(
+                        """
+                        INSERT INTO change_requests
+                            (request_type, target_type, ship_id, component_id, subject_label,
+                             proposed_change, notes, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+                        """,
+                        (
+                            request_type, target_type, ship_id, component_id, subject_label,
+                            proposed_change, notes,
+                        ),
+                    )
+                return redirect(url_for("change_request_thanks"))
+            except ValueError as error:
+                flash(str(error), "error")
+        return render_template(
+            "change_request_form.html",
+            ships=ships,
+            components=components,
+            selected_ship_id=request.args.get("ship_id", ""),
+            selected_component_id=request.args.get("component_id", ""),
+            selected_target_type=request.args.get("target_type", ""),
+        )
+
+    @app.get("/submit-change/thanks")
+    def change_request_thanks() -> str:
+        return render_template("change_request_thanks.html")
+
+    @app.get("/admin/change-requests")
+    @admin_required
+    def admin_change_requests() -> str:
+        status_filter = request.args.get("status", "pending").strip().lower()
+        if status_filter not in (*CHANGE_REQUEST_STATUSES, "all"):
+            status_filter = "pending"
+        where = "" if status_filter == "all" else "WHERE cr.status = ?"
+        values: list[str] = [] if status_filter == "all" else [status_filter]
+        with connect(app.config["DATABASE_PATH"]) as connection:
+            requests = connection.execute(
+                f"""
+                SELECT cr.*, s.name AS current_ship_name,
+                       c.name AS current_component_name, c.category AS current_component_category
+                FROM change_requests cr
+                LEFT JOIN ships s ON s.id = cr.ship_id
+                LEFT JOIN components c ON c.id = cr.component_id
+                {where}
+                ORDER BY CASE cr.status WHEN 'pending' THEN 0 ELSE 1 END,
+                         cr.created_at DESC, cr.id DESC
+                """,
+                values,
+            ).fetchall()
+            counts = {
+                row["status"]: int(row["total"])
+                for row in connection.execute(
+                    "SELECT status, COUNT(*) AS total FROM change_requests GROUP BY status"
+                ).fetchall()
+            }
+        return render_template(
+            "admin_change_requests.html",
+            change_requests=requests,
+            status_filter=status_filter,
+            status_counts=counts,
+        )
+
+    @app.post("/admin/change-requests/<int:request_id>/status")
+    @admin_required
+    def admin_change_request_status(request_id: int) -> Any:
+        status = request.form.get("status", "").strip().lower()
+        if status not in CHANGE_REQUEST_STATUSES:
+            abort(400, "Invalid request status.")
+        try:
+            admin_notes = form_text("admin_notes", 2000) or None
+        except ValueError as error:
+            flash(str(error), "error")
+            return redirect(url_for("admin_change_requests", status=request.args.get("status", "pending")))
+        with transaction(app.config["DATABASE_PATH"]) as connection:
+            exists = connection.execute(
+                "SELECT 1 FROM change_requests WHERE id = ?", (request_id,)
+            ).fetchone()
+            if exists is None:
+                abort(404)
+            connection.execute(
+                """
+                UPDATE change_requests
+                SET status = ?, admin_notes = ?, updated_at = CURRENT_TIMESTAMP,
+                    reviewed_at = CASE WHEN ? = 'pending' THEN NULL ELSE CURRENT_TIMESTAMP END
+                WHERE id = ?
+                """,
+                (status, admin_notes, status, request_id),
+            )
+        flash(
+            f"Request #{request_id} marked {status}. Inventory was not changed.",
+            "success",
+        )
+        return redirect(url_for("admin_change_requests", status=request.args.get("status", "pending")))
 
     @app.get("/ships")
     def public_ships() -> str:

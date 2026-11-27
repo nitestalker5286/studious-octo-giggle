@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Change Requests · Salvage Tracker{% endblock %}
+{% block content %}
+<section class="page-intro review-intro">
+  <div>
+    <p class="eyebrow">Admin review</p>
+    <h1>Change requests</h1>
+    <p>Review viewer proposals and record a decision. Status changes never edit ships or components automatically.</p>
+  </div>
+  <div class="review-safety-note"><strong>Manual inventory changes only</strong><span>Use the normal ship and component Admin tools after independently verifying an approved request.</span></div>
+</section>
+
+<nav class="status-tabs" aria-label="Filter change requests by status">
+  {% for value, label in [('pending', 'Pending'), ('approved', 'Approved'), ('rejected', 'Rejected'), ('resolved', 'Resolved'), ('all', 'All')] %}
+    <a class="status-tab {% if status_filter == value %}active{% endif %}" href="{{ url_for('admin_change_requests', status=value) }}">{{ label }}{% if value != 'all' %}<span>{{ status_counts.get(value, 0) }}</span>{% endif %}</a>
+  {% endfor %}
+</nav>
+
+{% if change_requests %}
+<section class="change-request-list" aria-label="Submitted change requests">
+  {% for item in change_requests %}
+  <article class="panel change-request-card">
+    <header class="change-request-header">
+      <div>
+        <div class="request-meta-line"><span class="status-badge status-{{ item.status }}">{{ item.status }}</span><span>Request #{{ item.id }}</span><span>{{ item.created_at }}</span></div>
+        <p class="eyebrow">{{ item.request_type }} · {{ item.target_type }}</p>
+        <h2>{{ item.subject_label or 'General inventory request' }}</h2>
+      </div>
+      {% if item.current_component_name %}<a class="button button-secondary button-small" href="{{ url_for('component_edit', component_id=item.component_id) }}">Open component</a>{% elif item.current_ship_name %}<a class="button button-secondary button-small" href="{{ url_for('ship_edit', ship_id=item.ship_id) }}">Open ship</a>{% endif %}
+    </header>
+
+    <div class="request-context-grid">
+      <section>
+        <h3>Proposed change</h3>
+        <p class="preserve-lines">{{ item.proposed_change }}</p>
+      </section>
+      <section>
+        <h3>Review context</h3>
+        <dl class="request-context-list">
+          <div><dt>Type</dt><dd>{{ item.request_type }}</dd></div>
+          <div><dt>Target</dt><dd>{{ item.target_type }}</dd></div>
+          <div><dt>Current record</dt><dd>{% if item.current_component_name %}{{ item.current_component_name }} · {{ item.current_ship_name }} · {{ item.current_component_category }}{% elif item.current_ship_name %}{{ item.current_ship_name }}{% else %}New, general, or record no longer exists{% endif %}</dd></div>
+        </dl>
+      </section>
+    </div>
+
+    {% if item.notes %}<section class="request-notes"><h3>Viewer notes</h3><p class="preserve-lines">{{ item.notes }}</p></section>{% endif %}
+
+    <form method="post" action="{{ url_for('admin_change_request_status', request_id=item.id, status=status_filter) }}" class="request-review-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="field">
+        <span>Admin review notes <small>Optional</small></span>
+        <textarea name="admin_notes" maxlength="2000" rows="3" placeholder="Record verification details or why this request was accepted/rejected.">{{ item.admin_notes or '' }}</textarea>
+      </label>
+      <div class="request-status-actions" aria-label="Set request status">
+        <span>Mark as</span>
+        <button class="button button-secondary button-small" name="status" value="pending" type="submit">Pending</button>
+        <button class="button button-small request-approve" name="status" value="approved" type="submit">Approved</button>
+        <button class="button button-secondary button-small request-reject" name="status" value="rejected" type="submit">Rejected</button>
+        <button class="button button-secondary button-small" name="status" value="resolved" type="submit">Resolved</button>
+      </div>
+    </form>
+    {% if item.reviewed_at %}<footer class="request-reviewed-at">Last reviewed {{ item.reviewed_at }}</footer>{% endif %}
+  </article>
+  {% endfor %}
+</section>
+{% else %}
+<section class="panel empty-state"><p class="eyebrow">Queue clear</p><h2>No {{ status_filter if status_filter != 'all' else '' }} requests</h2><p>Viewer submissions will appear here for manual review.</p></section>
+{% endif %}
+{% endblock %}

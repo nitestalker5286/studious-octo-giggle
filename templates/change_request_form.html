@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Submit Update · Salvage Tracker{% endblock %}
+{% block content %}
+{% set chosen_request_type = request.form.get('request_type', 'Correction') %}
+{% set inferred_target = selected_target_type if selected_target_type in CHANGE_TARGET_TYPES else ('Component' if selected_component_id else ('Ship' if selected_ship_id else 'Component')) %}
+{% set chosen_target_type = request.form.get('target_type', inferred_target) %}
+{% set chosen_ship_id = request.form.get('ship_id', selected_ship_id) %}
+{% set chosen_component_id = request.form.get('component_id', selected_component_id) %}
+<section class="form-shell change-request-shell">
+  <div class="form-intro">
+    <p class="eyebrow">Community update</p>
+    <h1>Submit a change</h1>
+    <p>Propose a correction, addition, or removal for review. Submitting this form does not directly change the production inventory.</p>
+    <div class="submission-safety-note">
+      <strong>Review workflow</strong>
+      <span>An administrator will compare your proposal with the current ship and component data, then mark it approved, rejected, or resolved.</span>
+    </div>
+  </div>
+  <form method="post" class="panel form-card" data-change-request-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="honeypot-field" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
+
+    <div class="two-column">
+      <label class="field">
+        <span>Request type <em>Required</em></span>
+        <select name="request_type" required>
+          {% for value in CHANGE_REQUEST_TYPES %}<option value="{{ value }}" {% if chosen_request_type == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field">
+        <span>About <em>Required</em></span>
+        <select name="target_type" required data-change-target>
+          {% for value in CHANGE_TARGET_TYPES %}<option value="{{ value }}" {% if chosen_target_type == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+        </select>
+      </label>
+    </div>
+
+    <div data-target-context="Ship">
+      <label class="field">
+        <span>Existing ship <small>Leave blank for a new ship</small></span>
+        <select name="ship_id">
+          <option value="">Propose a new ship or select one</option>
+          {% for ship in ships %}<option value="{{ ship.id }}" {% if chosen_ship_id|string == ship.id|string %}selected{% endif %}>{{ ship.name }}{% if ship.manufacturer %} · {{ ship.manufacturer }}{% endif %}</option>{% endfor %}
+        </select>
+      </label>
+    </div>
+
+    <div data-target-context="Component">
+      <label class="field">
+        <span>Existing component <small>Leave blank for a new component</small></span>
+        <select name="component_id">
+          <option value="">Propose a new component or select one</option>
+          {% for component in components %}<option value="{{ component.id }}" {% if chosen_component_id|string == component.id|string %}selected{% endif %}>{{ component.name }} · {{ component.ship_name }} · {{ component.category }}{% if component.size %} / S{{ component.size }}{% endif %}{% if component.grade %} / {{ component.grade }}{% endif %}{% if component.spec %} / {{ component.spec }}{% endif %}</option>{% endfor %}
+        </select>
+      </label>
+    </div>
+
+    <label class="field" data-custom-subject>
+      <span>Proposed item name <small>Required for a new ship/component</small></span>
+      <input name="subject_name" maxlength="240" value="{{ request.form.get('subject_name', '') }}" placeholder="For example: FR-86 or Aegis Reclaimer">
+    </label>
+
+    <label class="field">
+      <span>Proposed change or details <em>Required</em></span>
+      <textarea name="proposed_change" maxlength="4000" rows="8" required placeholder="Describe exactly what should be corrected, added, or removed. Include category, size, grade, spec, quantity, manufacturer, and ship sources when relevant.">{{ request.form.get('proposed_change', '') }}</textarea>
+      <small>Nothing here is applied automatically.</small>
+    </label>
+
+    <label class="field">
+      <span>Optional notes</span>
+      <textarea name="notes" maxlength="2000" rows="4" placeholder="Add supporting context, where you verified the information, or anything an administrator should know.">{{ request.form.get('notes', '') }}</textarea>
+    </label>
+
+    <div class="form-actions">
+      <a href="{{ url_for('index') }}">Cancel</a>
+      <button class="button" type="submit">Submit for review</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

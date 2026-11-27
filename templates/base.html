@@ -18,7 +18,9 @@
       <a href="{{ url_for('index') }}">{% if session.get('is_admin') %}Inventory{% else %}Component Finder{% endif %}</a>
       <a href="{{ url_for('public_ships') }}">Browse Ships</a>
       <a class="watchlist-nav-link" href="{{ url_for('watchlist') }}">Pinned <span class="pin-count" data-pin-count aria-label="0 pinned components">0</span></a>
+      <a href="{{ url_for('submit_change') }}">Submit Update</a>
       {% if session.get('is_admin') %}
+        <a class="review-nav-link" href="{{ url_for('admin_change_requests') }}">Review <span class="request-count" aria-label="{{ pending_change_request_count }} pending requests">{{ pending_change_request_count }}</span></a>
         <a href="{{ url_for('ship_new') }}">Add ship</a>
         <a href="{{ url_for('component_new') }}">Add component</a>
         <form action="{{ url_for('admin_logout') }}" method="post" class="inline-form">
@@ -44,6 +46,6 @@
     {% block content %}{% endblock %}
   </main>
 
-  <footer class="site-footer">Star Citizen Salvage Tracker · Viewer access is read-only</footer>
+  <footer class="site-footer">Star Citizen Salvage Tracker · Viewer access is read-only · <a href="{{ url_for('submit_change') }}">Submit a correction or addition</a></footer>
 </body>
 </html>

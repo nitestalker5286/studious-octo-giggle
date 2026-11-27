@@ -20,6 +20,8 @@ A responsive Flask + SQLite web app for tracking salvaged ships and their recove
 - Responsive right-side pinned panel beside the search controls; grouped results render below at full page width, and the panel moves below the finder on smaller screens
 - Dedicated Pinned Components view; pins are stored only in the user's browser with no account or database migration
 - Public ship directory with live ship/manufacturer search and A–Z navigation; selecting a ship shows every associated component
+- Public **Submit Update** workflow for proposed corrections, additions, removals, and other inventory feedback, with existing ship/component context and optional notes
+- Admin change-request review queue with Pending, Approved, Rejected, and Resolved states; reviewing or approving a request never modifies inventory automatically
 - Admin multi-source editor for adding and removing multiple sources on each ship
 - Public home view shows all component items by default and narrows the results through the finder, without exposing admin management controls
 - Admin inventory and ship-management views with full add, edit, and delete functionality
@@ -28,6 +30,7 @@ A responsive Flask + SQLite web app for tracking salvaged ships and their recove
 - Viewer/admin separation with password-protected changes
 - Automatic migration for the expected desktop SQLite schema and common legacy column names
 - Safe, idempotent `ship_sources` migration: every existing `ships.source` value is copied once without duplication on Railway restarts or redeploys
+- Safe, idempotent `change_requests` migration stored in the same persistent Railway SQLite database
 - Optional automatic CSV snapshot after every database change
 - Railway health check and Gunicorn production server configuration
 - Responsive desktop/mobile interface
@@ -115,8 +118,8 @@ In Railway, open **Settings → Networking → Generate Domain**. Railway will r
 
 ### 6. Sign in
 
-- Anyone with the URL can use the Component Finder, see only matching search results, or browse the alphabetical public ship directory.
-- Select **Admin** and use `ADMIN_PASSWORD` to view the complete inventories, export CSV, and add, edit, or delete records.
+- Anyone with the URL can use the Component Finder, browse the ship directory, and submit a proposed update without editing production inventory.
+- Select **Admin** and use `ADMIN_PASSWORD` to view the complete inventories, review submitted requests, export CSV, and add, edit, or delete records.
 
 ## Move an existing desktop database
 
@@ -134,6 +137,7 @@ The converter recognizes common legacy columns such as `ship_name`, `ship_source
 - The Gunicorn command intentionally uses **one worker** with multiple threads. Multiple independent workers are a poor fit for a small SQLite write workload.
 - SQLite uses WAL mode, foreign keys, a 30-second busy timeout, and one transaction per change.
 - Optional Grade and Spec values are stored as SQL `NULL`; startup migration safely upgrades older web schemas that incorrectly required empty strings.
+- Viewer change requests are review records only. Approved, rejected, and resolved statuses never invoke ship or component insert/update/delete operations; verified inventory changes must be made manually with the normal Admin tools.
 - Component pins, personal notes, priorities, and Watchlist sort preference use browser `localStorage` and never write to SQLite. They are specific to the browser/profile and may be cleared by browser-data cleanup.
 - A ship cannot be deleted while components still reference it.
 - Set a stable `SECRET_KEY`; changing it signs out all admin sessions.

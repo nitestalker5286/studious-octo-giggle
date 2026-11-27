@@ -497,6 +497,11 @@
 
   document.addEventListener("change", (event) => {
     if (!(event.target instanceof Element)) return;
+    const changeTarget = event.target.closest("[data-change-target]");
+    if (changeTarget) {
+      updateChangeRequestContext(changeTarget.closest("[data-change-request-form]"));
+      return;
+    }
     const priority = event.target.closest("[data-priority-id]");
     if (priority) {
       updatePinMetadata(
@@ -569,6 +574,17 @@
     });
   }
 
+  function updateChangeRequestContext(form) {
+    if (!form) return;
+    const target = form.querySelector("[data-change-target]");
+    if (!target) return;
+    form.querySelectorAll("[data-target-context]").forEach((section) => {
+      section.hidden = section.dataset.targetContext !== target.value;
+    });
+    const customSubject = form.querySelector("[data-custom-subject]");
+    if (customSubject) customSubject.hidden = target.value === "General";
+  }
+
   enableLiveResults(
     "[data-live-component-search]",
     'input[name="q"]',
@@ -587,6 +603,7 @@
   window.addEventListener("storage", (event) => {
     if (event.key === STORAGE_KEY || event.key === SORT_KEY) refreshWatchlistUI();
   });
+  document.querySelectorAll("[data-change-request-form]").forEach(updateChangeRequestContext);
   document.querySelectorAll("[data-source-editor]").forEach(renumberSourceRows);
   refreshWatchlistUI();
 })();

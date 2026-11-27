@@ -221,6 +221,69 @@ def _initialize_ship_sources(connection: sqlite3.Connection) -> None:
     )
 
 
+def _initialize_change_requests(connection: sqlite3.Connection) -> None:
+    """Create the viewer-submission queue without changing inventory records."""
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS change_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_type TEXT NOT NULL,
+            target_type TEXT NOT NULL,
+            ship_id INTEGER,
+            component_id INTEGER,
+            subject_label TEXT NOT NULL DEFAULT '',
+            proposed_change TEXT NOT NULL,
+            notes TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            admin_notes TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            reviewed_at TEXT,
+            FOREIGN KEY (ship_id) REFERENCES ships(id) ON DELETE SET NULL,
+            FOREIGN KEY (component_id) REFERENCES components(id) ON DELETE SET NULL
+        )
+        """
+    )
+    # Keep upgrades safe if this table was introduced by a pre-release build.
+    for name, definition in (
+        ("request_type", "TEXT NOT NULL DEFAULT 'Correction'"),
+        ("target_type", "TEXT NOT NULL DEFAULT 'General'"),
+        ("ship_id", "INTEGER"),
+        ("component_id", "INTEGER"),
+        ("subject_label", "TEXT NOT NULL DEFAULT ''"),
+        ("proposed_change", "TEXT NOT NULL DEFAULT ''"),
+        ("notes", "TEXT"),
+        ("status", "TEXT NOT NULL DEFAULT 'pending'"),
+        ("admin_notes", "TEXT"),
+        ("created_at", "TEXT NOT NULL DEFAULT ''"),
+        ("updated_at", "TEXT NOT NULL DEFAULT ''"),
+        ("reviewed_at", "TEXT"),
+    ):
+        _add_column(connection, "change_requests", name, definition)
+    connection.execute(
+        "UPDATE change_requests SET status = 'pending' "
+        "WHERE status IS NULL OR LOWER(TRIM(status)) NOT IN ('pending', 'approved', 'rejected', 'resolved')"
+    )
+    connection.execute(
+        "UPDATE change_requests SET created_at = CURRENT_TIMESTAMP "
+        "WHERE created_at IS NULL OR TRIM(created_at) = ''"
+    )
+    connection.execute(
+        "UPDATE change_requests SET updated_at = created_at "
+        "WHERE updated_at IS NULL OR TRIM(updated_at) = ''"
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_change_requests_status_created "
+        "ON change_requests(status, created_at DESC)"
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_change_requests_ship_id ON change_requests(ship_id)"
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_change_requests_component_id ON change_requests(component_id)"
+    )
+
+
 def ship_sources_map(
     connection: sqlite3.Connection, ship_ids: list[int] | None = None
 ) -> dict[int, list[str]]:
@@ -449,6 +512,7 @@ def initialize_database(database_path: str) -> None:
         connection.execute("CREATE INDEX IF NOT EXISTS idx_components_name ON components(name COLLATE NOCASE)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_components_category ON components(category COLLATE NOCASE)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_ship_sources_ship_id ON ship_sources(ship_id)")
+        _initialize_change_requests(connection)
 
 
 def inventory_rows(database_path: str, filters: dict[str, str] | None = None) -> list[dict[str, Any]]:

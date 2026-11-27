@@ -636,3 +636,114 @@ def test_hybrid_legacy_component_constraints_support_create_and_edit(tmp_path):
         assert updated["component_name"] == updated["name"] == "Chimalli Updated"
         assert updated["component_type"] == updated["category"] == "Power Plant"
         assert updated["quantity"] == 4
+
+
+def test_public_change_request_submission_and_admin_review_do_not_modify_inventory(client, app):
+    seed(client)
+    post(client, "/admin/logout", {})
+
+    form = client.get("/submit-change?target_type=Component&component_id=1")
+    assert form.status_code == 200
+    assert b"Submit a change" in form.data
+    assert b"FR-86" in form.data
+    assert b"does not directly change" in form.data
+
+    response = post(
+        client,
+        "/submit-change",
+        {
+            "request_type": "Correction",
+            "target_type": "Component",
+            "component_id": "1",
+            "ship_id": "",
+            "subject_name": "",
+            "proposed_change": "Change quantity from 2 to 3 after verification.",
+            "notes": "Observed on two separate salvage runs.",
+            "website": "",
+        },
+    )
+    assert b"Thanks for helping improve the inventory" in response.data
+
+    with connect(app.config["DATABASE_PATH"]) as connection:
+        submitted = connection.execute("SELECT * FROM change_requests").fetchone()
+        component_before = connection.execute("SELECT * FROM components WHERE id = 1").fetchone()
+        assert submitted["request_type"] == "Correction"
+        assert submitted["target_type"] == "Component"
+        assert submitted["component_id"] == 1
+        assert submitted["ship_id"] == 1
+        assert submitted["status"] == "pending"
+        assert "FR-86" in submitted["subject_label"]
+        assert component_before["quantity"] == 2
+
+    login(client)
+    review = client.get("/admin/change-requests")
+    assert review.status_code == 200
+    assert b"Change requests" in review.data
+    assert b"Change quantity from 2 to 3" in review.data
+    assert b"Manual inventory changes only" in review.data
+
+    reviewed = post(
+        client,
+        f"/admin/change-requests/{submitted['id']}/status?status=pending",
+        {"status": "approved", "admin_notes": "Verified; update separately."},
+    )
+    assert b"Inventory was not changed" in reviewed.data
+    with connect(app.config["DATABASE_PATH"]) as connection:
+        request_row = connection.execute(
+            "SELECT * FROM change_requests WHERE id = ?", (submitted["id"],)
+        ).fetchone()
+        component_after = connection.execute("SELECT * FROM components WHERE id = 1").fetchone()
+        assert request_row["status"] == "approved"
+        assert request_row["reviewed_at"] is not None
+        assert request_row["admin_notes"] == "Verified; update separately."
+        assert component_after["quantity"] == component_before["quantity"] == 2
+
+
+def test_change_request_addition_requires_subject_and_review_is_admin_only(client, app):
+    client.get("/submit-change")
+    invalid = post(
+        client,
+        "/submit-change",
+        {
+            "request_type": "Addition",
+            "target_type": "Ship",
+            "ship_id": "",
+            "subject_name": "",
+            "proposed_change": "Add this ship.",
+            "notes": "",
+            "website": "",
+        },
+    )
+    assert b"Enter a name for the proposed addition" in invalid.data
+    with connect(app.config["DATABASE_PATH"]) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM change_requests").fetchone()[0] == 0
+
+    review = client.get("/admin/change-requests")
+    assert review.status_code == 302
+    assert "/admin/login" in review.headers["Location"]
+
+
+def test_change_request_migration_is_idempotent_and_preserves_requests(tmp_path):
+    database_path = tmp_path / "requests.db"
+    initialize_database(str(database_path))
+    with connect(str(database_path)) as connection:
+        connection.execute(
+            """
+            INSERT INTO change_requests
+                (request_type, target_type, subject_label, proposed_change, notes, status)
+            VALUES ('Addition', 'Ship', 'New Ship', 'Add details', NULL, 'pending')
+            """
+        )
+        connection.commit()
+
+    initialize_database(str(database_path))
+    initialize_database(str(database_path))
+    with connect(str(database_path)) as connection:
+        rows = connection.execute("SELECT * FROM change_requests").fetchall()
+        columns = {row["name"] for row in connection.execute("PRAGMA table_info(change_requests)")}
+        indexes = {row["name"] for row in connection.execute("PRAGMA index_list(change_requests)")}
+    assert len(rows) == 1
+    assert rows[0]["subject_label"] == "New Ship"
+    assert rows[0]["status"] == "pending"
+    assert {"admin_notes", "reviewed_at", "component_id", "ship_id"}.issubset(columns)
+    assert "idx_change_requests_status_created" in indexes

@@ -2,7 +2,7 @@
 {% block title %}Ships · Salvage Tracker{% endblock %}
 {% block content %}
 <section class="page-intro ship-directory-intro">
-  <div><p class="eyebrow">Public ship directory</p><h1>Ships</h1><p>Search by ship or manufacturer, or jump to a letter. Select a ship to see every associated component.</p></div>
+  <div><p class="eyebrow">Public ship directory</p><h1>Ships</h1><p>Search by ship or manufacturer, or jump to a letter. Select a ship to see every associated component.</p><a href="{{ url_for('submit_change', target_type='Ship') }}">Submit a ship addition or correction</a></div>
   <form method="get" class="ship-search" data-live-ship-search>
     {% if active_letter %}<input type="hidden" name="letter" value="{{ active_letter }}">{% endif %}
     <label class="field"><span>Search ships</span><div class="search-control"><input type="search" name="q" value="{{ query }}" placeholder="Ship or manufacturer" autocomplete="off"><button class="button" type="submit">Search</button></div></label>

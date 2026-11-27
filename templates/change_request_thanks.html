@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Update Submitted · Salvage Tracker{% endblock %}
+{% block content %}
+<section class="empty-state standalone submission-thanks">
+  <p class="eyebrow">Request received</p>
+  <h1>Thanks for helping improve the inventory.</h1>
+  <p>Your proposal is in the Admin review queue. It has not changed any ship or component record.</p>
+  <div class="hero-actions">
+    <a class="button" href="{{ url_for('index') }}">Return to Component Finder</a>
+    <a class="button button-secondary" href="{{ url_for('submit_change') }}">Submit another update</a>
+  </div>
+</section>
+{% endblock %}
