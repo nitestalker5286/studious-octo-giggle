@@ -120,6 +120,11 @@ def test_public_home_desktop_grid_starts_results_below_finder_without_sidebar_ov
     assert ".public-home-layout > #component-results { grid-area: results; }" in styles
     assert ".home-sidebar { grid-area: sidebar" in styles
     assert 'grid-template-areas: "finder" "sidebar" "results"' in styles
+    assert ".grouped-results-table table { width: 100%; min-width: 0; table-layout: fixed; }" in styles
+    assert ".grouped-results-table .result-col-actions { width: 19%; }" in styles
+    assert ".grouped-results-table .sources-cell { min-width: 0; }" in styles
+    assert b'<col class="result-col-actions">' in response.data
+    assert b'class="result-row-actions"' in response.data
 
 
 def test_viewer_cannot_modify_and_csrf_is_enforced(client):

@@ -149,6 +149,15 @@
   {% else %}
   <div class="table-wrap public-results-table grouped-results-table">
     <table>
+      <colgroup>
+        <col class="result-col-component">
+        <col class="result-col-category">
+        <col class="result-col-size">
+        <col class="result-col-grade">
+        <col class="result-col-spec">
+        <col class="result-col-sources">
+        <col class="result-col-actions">
+      </colgroup>
       <thead><tr><th>Component</th><th>Category</th><th>Size</th><th>Grade</th><th>Spec</th><th>Sources</th><th class="actions">Watchlist</th></tr></thead>
       <tbody>
       {% for component in components %}
@@ -172,15 +181,17 @@
             </details>
           </td>
           <td class="actions pin-cell">
-            <a class="submit-context-link" href="{{ url_for('submit_change', target_type='Component', component_id=component.record_ids[0]) }}">Update</a>
-            <button type="button" class="pin-button" aria-pressed="false" data-pin-component
-              data-group-id="{{ component.id }}" data-name="{{ component.name }}"
-              data-category="{{ component.category }}" data-size="{{ component.size or '' }}"
-              data-grade="{{ component.grade or '' }}" data-spec="{{ component.spec or '' }}"
-              data-quantity="{{ component.quantity }}" data-sources="{{ component.sources|tojson|forceescape }}"
-              data-primary-ship-url="{{ url_for('public_ship_detail', ship_id=component.sources[0].ship_id) }}">
-              <span class="pin-icon" aria-hidden="true">☆</span><span class="pin-label">Pin</span>
-            </button>
+            <div class="result-row-actions">
+              <a class="submit-context-link" href="{{ url_for('submit_change', target_type='Component', component_id=component.record_ids[0]) }}">Update</a>
+              <button type="button" class="pin-button" aria-pressed="false" data-pin-component
+                data-group-id="{{ component.id }}" data-name="{{ component.name }}"
+                data-category="{{ component.category }}" data-size="{{ component.size or '' }}"
+                data-grade="{{ component.grade or '' }}" data-spec="{{ component.spec or '' }}"
+                data-quantity="{{ component.quantity }}" data-sources="{{ component.sources|tojson|forceescape }}"
+                data-primary-ship-url="{{ url_for('public_ship_detail', ship_id=component.sources[0].ship_id) }}">
+                <span class="pin-icon" aria-hidden="true">☆</span><span class="pin-label">Pin</span>
+              </button>
+            </div>
           </td>
         </tr>
       {% endfor %}

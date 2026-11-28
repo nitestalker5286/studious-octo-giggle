@@ -18,7 +18,7 @@ A responsive Flask + SQLite web app for tracking salvaged ships and their recove
 - Browser-local personal Component Watchlist with grouped-component pin/unpin controls, a live pinned count, and clear-all action
 - Browser-local personal notes and High/Medium/Low priorities for every pinned component
 - Watchlist sorting by priority, recently pinned, component name, or category; the selected sort is saved in the browser
-- Responsive right-side Personal Watchlist and calculator stack; on desktop, Component Finder results begin 20px below the Finder in the available main column alongside the sidebar without overlap. On smaller screens the order remains Finder → Watchlist → calculator → results.
+- Responsive right-side Personal Watchlist and calculator stack; on desktop, Component Finder results begin 20px below the Finder in the available main column alongside the sidebar without overlap. The grouped results table uses a compact fixed column layout so Component, Category, Size, Grade, Spec, Sources, Update, and Pin remain visible without horizontal page overflow. On smaller screens the order remains Finder → Watchlist → calculator → results.
 - Industrial Salvage-styled live cSCU-to-SCU calculator directly beneath the Personal Watchlist, using the `100 cSCU = 1 SCU` conversion and remaining beneath the Watchlist on responsive/mobile layouts
 - Dedicated Pinned Components view; pins are stored only in the user's browser with no account or database migration
 - Public ship directory with live ship/manufacturer search and A–Z navigation; selecting a ship shows every associated component
