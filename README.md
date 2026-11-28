@@ -8,7 +8,7 @@ A responsive Flask + SQLite web app for tracking salvaged ships and their recove
 - Components: name, category, required whole-number size from 0 through 10, optional grade, optional spec, and quantity
 - Grade options: blank, A, B, C, D
 - Spec options: blank, MIL, CIV, CMP, IND, STH
-- Categories include Guns, Missiles, Radar, Salvage Module, and the original ship-component categories
+- Categories include Bombs, Weapons, Guns, Missiles, Radar, Salvage Module, and the original ship-component categories. Missile Rack is retired from new selections; existing Missile Rack records remain unchanged and editable without forced reclassification.
 - Clean public **Component Finder** that shows all components when every filter is set to All, with live Component Name search
 - Duplicate public component configurations are grouped into one result by Component Name, Category, Size, Grade, and Spec
 - Each grouped result has an expandable Sources section with every matching ship, ship source, and per-source quantity

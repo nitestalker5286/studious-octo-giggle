@@ -44,7 +44,8 @@ CATEGORY_OPTIONS = (
     "Quantum Drive",
     "Guns",
     "Missiles",
-    "Missile Rack",
+    "Bombs",
+    "Weapons",
     "Turret",
     "Radar",
     "Mining Module",
@@ -669,7 +670,9 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
             ships = connection.execute("SELECT id, name FROM ships ORDER BY name COLLATE NOCASE").fetchall()
         if request.method == "POST":
             try:
-                values = validate_component_form(app.config["DATABASE_PATH"])
+                values = validate_component_form(
+                    app.config["DATABASE_PATH"], existing_category=component["category"]
+                )
                 with transaction(app.config["DATABASE_PATH"]) as connection:
                     update_component(connection, component_id, *values)
                 after_change()
@@ -687,7 +690,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
         )
 
     def validate_component_form(
-        database_path: str,
+        database_path: str, existing_category: str | None = None,
     ) -> tuple[int, str, str, int, str | None, str | None, int]:
         try:
             ship_id = int(request.form.get("ship_id", ""))
@@ -698,7 +701,9 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                 raise ValueError("Select a valid ship.")
         name = form_text("name", 160, required=True)
         category = request.form.get("category", "")
-        if category not in CATEGORY_OPTIONS:
+        # Retired/legacy category values may remain unchanged on their existing
+        # records, but cannot be selected for new records or assigned elsewhere.
+        if category not in CATEGORY_OPTIONS and category != existing_category:
             raise ValueError("Select a valid component category.")
         size = normalize_component_size(request.form.get("size", ""))
         grade_value = request.form.get("grade", "").strip()

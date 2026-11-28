@@ -265,6 +265,96 @@ def test_salvage_module_category_can_be_added_and_filtered(client, app):
     assert b"Abrade" in filtered.data
 
 
+def test_bombs_and_weapons_replace_missile_rack_without_altering_legacy_records(client, app):
+    login(client)
+    post(client, "/ships/new", {"name": "A2 Hercules", "manufacturer": "Crusader", "source": ""})
+
+    form = client.get("/components/new")
+    assert form.status_code == 200
+    assert b">Bombs<" in form.data
+    assert b">Weapons<" in form.data
+    assert b"Missile Rack" not in form.data
+
+    base = {
+        "ship_id": "1",
+        "size": "3",
+        "grade": "",
+        "spec": "",
+        "quantity": "1",
+    }
+    bombs = post(
+        client,
+        "/components/new",
+        {**base, "name": "MOAB", "category": "Bombs"},
+    )
+    weapons = post(
+        client,
+        "/components/new",
+        {**base, "name": "Nose Weapon", "category": "Weapons"},
+    )
+    assert b"MOAB" in bombs.data and b"Bombs" in bombs.data
+    assert b"Nose Weapon" in weapons.data and b"Weapons" in weapons.data
+
+    retired = post(
+        client,
+        "/components/new",
+        {**base, "name": "Should Not Save", "category": "Missile Rack"},
+    )
+    assert retired.status_code == 200
+    assert b"Select a valid component category." in retired.data
+    with connect(app.config["DATABASE_PATH"]) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM components WHERE name = 'Should Not Save'"
+        ).fetchone()[0] == 0
+        legacy_id = connection.execute(
+            """
+            INSERT INTO components(ship_id, name, category, size, grade, spec, quantity)
+            VALUES (1, 'Legacy Rack', 'Missile Rack', 2, NULL, NULL, 2)
+            """
+        ).lastrowid
+        connection.commit()
+
+    # Repeated Railway startup compatibility must leave the retired value untouched.
+    initialize_database(app.config["DATABASE_PATH"])
+    initialize_database(app.config["DATABASE_PATH"])
+    with connect(app.config["DATABASE_PATH"]) as connection:
+        legacy = connection.execute(
+            "SELECT * FROM components WHERE id = ?", (legacy_id,)
+        ).fetchone()
+        assert legacy["category"] == "Missile Rack"
+        assert legacy["grade"] is None
+        assert legacy["spec"] is None
+
+    edit_form = client.get(f"/components/{legacy_id}/edit")
+    assert b"Missile Rack (existing legacy category)" in edit_form.data
+    assert b"retired category is preserved" in edit_form.data
+    edited = post(
+        client,
+        f"/components/{legacy_id}/edit",
+        {
+            "ship_id": "1",
+            "name": "Legacy Rack Updated",
+            "category": "Missile Rack",
+            "size": "2",
+            "grade": "",
+            "spec": "",
+            "quantity": "3",
+        },
+    )
+    assert b"Legacy Rack Updated" in edited.data
+    with connect(app.config["DATABASE_PATH"]) as connection:
+        preserved = connection.execute(
+            "SELECT * FROM components WHERE id = ?", (legacy_id,)
+        ).fetchone()
+        assert preserved["category"] == "Missile Rack"
+        assert preserved["quantity"] == 3
+
+    post(client, "/admin/logout", {})
+    public = client.get("/?category=Missile+Rack")
+    assert b"Legacy Rack Updated" in public.data
+    assert b"Missile Rack" in public.data
+
+
 def test_public_ship_directory_is_alphabetical_and_ship_page_lists_its_components(client, app):
     seed(client)
     with connect(app.config["DATABASE_PATH"]) as connection:
