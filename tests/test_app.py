@@ -106,6 +106,20 @@ def test_health_and_empty_viewer_search_page(client):
     assert b"data-scu-result" in response.data
     assert b"data-cscu-clear" in response.data
     assert response.data.index(b"data-home-watchlist") < response.data.index(b"data-cscu-calculator")
+    assert response.data.index(b'class="panel filter-panel"') < response.data.index(b"data-home-watchlist")
+    assert response.data.index(b"data-cscu-calculator") < response.data.index(b'id="component-results"')
+
+
+def test_public_home_desktop_grid_starts_results_below_finder_without_sidebar_overlap(client):
+    response = client.get("/")
+    assert response.status_code == 200
+    styles = (Path(__file__).parents[1] / "static" / "styles.css").read_text()
+    assert 'grid-template-areas: "finder sidebar" "results sidebar"' in styles
+    assert "row-gap: 20px" in styles
+    assert ".public-home-layout > .filter-panel { grid-area: finder" in styles
+    assert ".public-home-layout > #component-results { grid-area: results; }" in styles
+    assert ".home-sidebar { grid-area: sidebar" in styles
+    assert 'grid-template-areas: "finder" "sidebar" "results"' in styles
 
 
 def test_viewer_cannot_modify_and_csrf_is_enforced(client):

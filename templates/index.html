@@ -15,7 +15,7 @@
 </section>
 {% endif %}
 
-{% if not session.get('is_admin') %}<div class="public-home-layout"><div class="public-main-column">{% endif %}
+{% if not session.get('is_admin') %}<div class="public-home-layout">{% endif %}
 <section class="panel filter-panel" aria-labelledby="filter-heading">
   <div class="section-heading">
     <div><p class="eyebrow">Public search</p><h1 id="filter-heading" class="search-title">Component Finder</h1></div>
@@ -76,7 +76,6 @@
 </section>
 
 {% if not session.get('is_admin') %}
-</div>
 <aside class="home-sidebar" aria-label="Personal tools">
   <section class="panel home-watchlist-panel" data-home-watchlist aria-labelledby="home-watchlist-heading">
     <div class="watchlist-panel-heading">
@@ -99,7 +98,6 @@
     <button type="button" class="button button-secondary button-small calculator-clear" data-cscu-clear>Clear</button>
   </section>
 </aside>
-</div>
 {% endif %}
 
 {% if session.get('is_admin') %}
@@ -218,6 +216,8 @@
   {% endif %}
 </section>
 </div>
+
+{% if not session.get('is_admin') %}</div>{% endif %}
 
 {% if session.get('is_admin') %}
 <section class="panel" aria-labelledby="ships-heading">
