@@ -8,16 +8,18 @@ A responsive Flask + SQLite web app for tracking salvaged ships and their recove
 - Components: name, category, required whole-number size from 0 through 10, optional grade, optional spec, and quantity
 - Grade options: blank, A, B, C, D
 - Spec options: blank, MIL, CIV, CMP, IND, STH
-- Categories include Bombs, Weapons, Guns, Missiles, Radar, Salvage Module, and the original ship-component categories. Missile Rack is retired from new selections; existing Missile Rack records remain unchanged and editable without forced reclassification.
+- Categories include Torpedoes, Bombs, Weapons, Missiles, Radar, Salvage Module, and the original ship-component categories. Guns and Missile Rack are retired from new selections; existing records in either retired category remain unchanged and editable without forced reclassification.
 - Clean public **Component Finder** that shows all components when every filter is set to All, with live Component Name search
 - Duplicate public component configurations are grouped into one result by Component Name, Category, Size, Grade, and Spec
 - Each grouped result has an expandable Sources section with every matching ship, ship source, and per-source quantity
+- Main public Component Finder results omit the aggregate Total Qty column; per-ship quantities remain available inside each grouped Sources section and grouped totals remain available to Watchlist data
 - Quick Category buttons and clickable Size, Grade, and Spec filter chips, including unspecified values
 - Mobile component result cards with ship links and compact component details
 - Browser-local personal Component Watchlist with grouped-component pin/unpin controls, a live pinned count, and clear-all action
 - Browser-local personal notes and High/Medium/Low priorities for every pinned component
 - Watchlist sorting by priority, recently pinned, component name, or category; the selected sort is saved in the browser
 - Responsive right-side pinned panel beside the search controls; grouped results render below at full page width, and the panel moves below the finder on smaller screens
+- Industrial Salvage-styled live cSCU-to-SCU calculator directly beneath the Personal Watchlist, using the `100 cSCU = 1 SCU` conversion and remaining beneath the Watchlist on responsive/mobile layouts
 - Dedicated Pinned Components view; pins are stored only in the user's browser with no account or database migration
 - Public ship directory with live ship/manufacturer search and A–Z navigation; selecting a ship shows every associated component
 - Public **Submit Update** workflow for proposed corrections, additions, removals, and other inventory feedback, with existing ship/component context and optional notes

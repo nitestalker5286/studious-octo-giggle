@@ -77,18 +77,27 @@
 
 {% if not session.get('is_admin') %}
 </div>
-<aside class="panel home-watchlist-panel" data-home-watchlist aria-labelledby="home-watchlist-heading">
-  <div class="watchlist-panel-heading">
-    <div><p class="eyebrow">Personal watchlist</p><h2 id="home-watchlist-heading">Pinned components</h2></div>
-    <span class="pin-count pin-count-large" data-pin-count aria-label="0 pinned components">0</span>
-  </div>
-  <p class="watchlist-local-note">Saved only in this browser.</p>
-  <div class="home-watchlist-items" data-home-watchlist-items></div>
-  <div class="watchlist-empty compact" data-home-watchlist-empty><p>No pinned components yet.</p></div>
-  <div class="watchlist-panel-actions">
-    <a href="{{ url_for('watchlist') }}">Open full watchlist</a>
-    <button type="button" class="danger-link" data-clear-pins>Clear all</button>
-  </div>
+<aside class="home-sidebar" aria-label="Personal tools">
+  <section class="panel home-watchlist-panel" data-home-watchlist aria-labelledby="home-watchlist-heading">
+    <div class="watchlist-panel-heading">
+      <div><p class="eyebrow">Personal watchlist</p><h2 id="home-watchlist-heading">Pinned components</h2></div>
+      <span class="pin-count pin-count-large" data-pin-count aria-label="0 pinned components">0</span>
+    </div>
+    <p class="watchlist-local-note">Saved only in this browser.</p>
+    <div class="home-watchlist-items" data-home-watchlist-items></div>
+    <div class="watchlist-empty compact" data-home-watchlist-empty><p>No pinned components yet.</p></div>
+    <div class="watchlist-panel-actions">
+      <a href="{{ url_for('watchlist') }}">Open full watchlist</a>
+      <button type="button" class="danger-link" data-clear-pins>Clear all</button>
+    </div>
+  </section>
+  <section class="panel cscu-calculator" data-cscu-calculator aria-labelledby="cscu-calculator-heading">
+    <div class="calculator-heading"><div><p class="eyebrow">Cargo converter</p><h2 id="cscu-calculator-heading">cSCU to SCU</h2></div><span class="calculator-ratio">100:1</span></div>
+    <label class="field"><span>cSCU</span><input id="cscu-input" type="number" min="0" step="any" inputmode="decimal" placeholder="Enter cSCU" data-cscu-input aria-describedby="cscu-conversion-note"></label>
+    <div class="calculator-result" aria-live="polite"><span>SCU result</span><output data-scu-result for="cscu-input">0 SCU</output></div>
+    <p id="cscu-conversion-note" class="calculator-note">100 cSCU equals 1 SCU.</p>
+    <button type="button" class="button button-secondary button-small calculator-clear" data-cscu-clear>Clear</button>
+  </section>
 </aside>
 </div>
 {% endif %}
@@ -142,7 +151,7 @@
   {% else %}
   <div class="table-wrap public-results-table grouped-results-table">
     <table>
-      <thead><tr><th>Component</th><th>Category</th><th>Size</th><th>Grade</th><th>Spec</th><th class="number">Total Qty</th><th>Sources</th><th class="actions">Watchlist</th></tr></thead>
+      <thead><tr><th>Component</th><th>Category</th><th>Size</th><th>Grade</th><th>Spec</th><th>Sources</th><th class="actions">Watchlist</th></tr></thead>
       <tbody>
       {% for component in components %}
         <tr>
@@ -151,7 +160,6 @@
           <td data-label="Size">{{ component.size or '—' }}</td>
           <td data-label="Grade">{{ component.grade or '—' }}</td>
           <td data-label="Spec">{{ component.spec or '—' }}</td>
-          <td data-label="Total Qty" class="number">{{ component.quantity }}</td>
           <td data-label="Sources" class="sources-cell">
             <details class="sources-disclosure">
               <summary>{{ component.source_count }} source{% if component.source_count != 1 %}s{% endif %}</summary>
@@ -184,7 +192,7 @@
   <div class="mobile-result-cards">
     {% for component in components %}
     <article class="result-card">
-      <div class="result-card-heading"><div><p class="eyebrow">{{ component.category }}</p><h3>{{ component.name }}</h3></div><div class="result-card-tools"><strong class="result-qty">×{{ component.quantity }}</strong><button type="button" class="pin-button pin-button-icon" aria-pressed="false" data-pin-component
+      <div class="result-card-heading"><div><p class="eyebrow">{{ component.category }}</p><h3>{{ component.name }}</h3></div><div class="result-card-tools"><button type="button" class="pin-button pin-button-icon" aria-pressed="false" data-pin-component
         data-group-id="{{ component.id }}" data-name="{{ component.name }}"
         data-category="{{ component.category }}" data-size="{{ component.size or '' }}"
         data-grade="{{ component.grade or '' }}" data-spec="{{ component.spec or '' }}"

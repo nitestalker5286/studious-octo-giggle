@@ -159,7 +159,6 @@ tbody tr:hover { background: rgba(245,158,11,.045); }
 .result-card-tools { display: flex; align-items: center; gap: 9px; }
 .result-card-heading h3 { margin-bottom: 8px; font-size: 1.2rem; }
 .result-card-heading .eyebrow { margin-bottom: 5px; }
-.result-qty { color: var(--accent); font-size: 1.1rem; }
 .result-ship { display: inline-block; font-weight: 800; margin-bottom: 5px; }
 .result-subtext { color: var(--muted); font-size: .82rem; }
 .result-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 15px 0 0; padding-top: 13px; border-top: 1px solid var(--line); }
@@ -171,7 +170,8 @@ tbody tr:hover { background: rgba(245,158,11,.045); }
 .public-main-column { min-width: 0; }
 .public-home-layout .filter-panel { margin-bottom: 0; }
 #component-results { width: 100%; min-width: 0; }
-.home-watchlist-panel { position: sticky; top: 92px; padding: 20px; max-height: calc(100vh - 112px); overflow: auto; }
+.home-sidebar { position: sticky; top: 92px; display: grid; gap: 20px; min-width: 0; }
+.home-watchlist-panel { padding: 20px; max-height: calc(100vh - 340px); overflow: auto; }
 .watchlist-panel-heading { display: flex; justify-content: space-between; gap: 14px; align-items: start; }
 .watchlist-panel-heading h2 { font-size: 1.25rem; }
 .pin-count-large { min-width: 30px; height: 30px; font-size: .82rem; }
@@ -187,6 +187,15 @@ tbody tr:hover { background: rgba(245,158,11,.045); }
 .watchlist-empty.compact p { margin-bottom: 0; }
 .watchlist-panel-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 15px; margin-top: 12px; border-top: 1px solid var(--line); font-size: .78rem; }
 .watchlist-panel-actions button:disabled { opacity: .4; cursor: not-allowed; }
+.cscu-calculator { width: 100%; padding: 20px; }
+.calculator-heading { display: flex; align-items: start; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
+.calculator-heading h2 { font-size: 1.25rem; }
+.calculator-ratio { display: inline-flex; align-items: center; min-height: 28px; padding: 0 8px; border: 1px solid #7C5412; border-radius: 99px; color: var(--accent-hover); background: var(--accent-dark); font-size: .7rem; font-weight: 900; }
+.calculator-result { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 13px; padding: 13px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-deep); }
+.calculator-result span { color: var(--muted); font-size: .74rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.calculator-result output { color: var(--accent-hover); font-size: 1.15rem; font-weight: 900; font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; }
+.calculator-note { color: var(--muted); margin: 9px 0 13px; font-size: .72rem; }
+.calculator-clear { width: 100%; }
 .watchlist-intro { display: flex; justify-content: space-between; align-items: end; gap: 28px; }
 .watchlist-header-actions { display: flex; align-items: end; gap: 12px; }
 .watchlist-sort-control { display: grid; gap: 5px; min-width: 170px; }
@@ -297,7 +306,8 @@ code { color: var(--accent); }
   .click-filter-grid { grid-template-columns: 1fr; gap: 0; }
   .ship-directory-intro { grid-template-columns: 1fr; gap: 18px; }
   .public-home-layout { grid-template-columns: 1fr; }
-  .home-watchlist-panel { position: static; max-height: none; }
+  .home-sidebar { position: static; }
+  .home-watchlist-panel { max-height: none; }
   .watchlist-grid { grid-template-columns: repeat(2, 1fr); }
   .review-intro, .request-context-grid { grid-template-columns: 1fr; }
   .review-safety-note { margin-top: 0; }

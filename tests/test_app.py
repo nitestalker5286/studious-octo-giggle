@@ -99,6 +99,13 @@ def test_health_and_empty_viewer_search_page(client):
     assert b"data-pin-count" in response.data
     assert b"data-home-watchlist" in response.data
     assert b"Open full watchlist" in response.data
+    assert b"data-cscu-calculator" in response.data
+    assert b"cSCU to SCU" in response.data
+    assert b"100 cSCU equals 1 SCU" in response.data
+    assert b"data-cscu-input" in response.data
+    assert b"data-scu-result" in response.data
+    assert b"data-cscu-clear" in response.data
+    assert response.data.index(b"data-home-watchlist") < response.data.index(b"data-cscu-calculator")
 
 
 def test_viewer_cannot_modify_and_csrf_is_enforced(client):
@@ -265,7 +272,7 @@ def test_salvage_module_category_can_be_added_and_filtered(client, app):
     assert b"Abrade" in filtered.data
 
 
-def test_bombs_and_weapons_replace_missile_rack_without_altering_legacy_records(client, app):
+def test_new_and_retired_categories_preserve_legacy_records(client, app):
     login(client)
     post(client, "/ships/new", {"name": "A2 Hercules", "manufacturer": "Crusader", "source": ""})
 
@@ -273,6 +280,8 @@ def test_bombs_and_weapons_replace_missile_rack_without_altering_legacy_records(
     assert form.status_code == 200
     assert b">Bombs<" in form.data
     assert b">Weapons<" in form.data
+    assert b">Torpedoes<" in form.data
+    assert b">Guns<" not in form.data
     assert b"Missile Rack" not in form.data
 
     base = {
@@ -294,6 +303,12 @@ def test_bombs_and_weapons_replace_missile_rack_without_altering_legacy_records(
     )
     assert b"MOAB" in bombs.data and b"Bombs" in bombs.data
     assert b"Nose Weapon" in weapons.data and b"Weapons" in weapons.data
+    torpedoes = post(
+        client,
+        "/components/new",
+        {**base, "name": "Arrester III", "category": "Torpedoes"},
+    )
+    assert b"Arrester III" in torpedoes.data and b"Torpedoes" in torpedoes.data
 
     retired = post(
         client,
@@ -302,6 +317,13 @@ def test_bombs_and_weapons_replace_missile_rack_without_altering_legacy_records(
     )
     assert retired.status_code == 200
     assert b"Select a valid component category." in retired.data
+    retired_guns = post(
+        client,
+        "/components/new",
+        {**base, "name": "Should Also Not Save", "category": "Guns"},
+    )
+    assert retired_guns.status_code == 200
+    assert b"Select a valid component category." in retired_guns.data
     with connect(app.config["DATABASE_PATH"]) as connection:
         assert connection.execute(
             "SELECT COUNT(*) FROM components WHERE name = 'Should Not Save'"
@@ -310,6 +332,12 @@ def test_bombs_and_weapons_replace_missile_rack_without_altering_legacy_records(
             """
             INSERT INTO components(ship_id, name, category, size, grade, spec, quantity)
             VALUES (1, 'Legacy Rack', 'Missile Rack', 2, NULL, NULL, 2)
+            """
+        ).lastrowid
+        legacy_guns_id = connection.execute(
+            """
+            INSERT INTO components(ship_id, name, category, size, grade, spec, quantity)
+            VALUES (1, 'Legacy Gun', 'Guns', 3, NULL, NULL, 1)
             """
         ).lastrowid
         connection.commit()
@@ -324,6 +352,12 @@ def test_bombs_and_weapons_replace_missile_rack_without_altering_legacy_records(
         assert legacy["category"] == "Missile Rack"
         assert legacy["grade"] is None
         assert legacy["spec"] is None
+        legacy_guns = connection.execute(
+            "SELECT * FROM components WHERE id = ?", (legacy_guns_id,)
+        ).fetchone()
+        assert legacy_guns["category"] == "Guns"
+        assert legacy_guns["grade"] is None
+        assert legacy_guns["spec"] is None
 
     edit_form = client.get(f"/components/{legacy_id}/edit")
     assert b"Missile Rack (existing legacy category)" in edit_form.data
@@ -349,10 +383,30 @@ def test_bombs_and_weapons_replace_missile_rack_without_altering_legacy_records(
         assert preserved["category"] == "Missile Rack"
         assert preserved["quantity"] == 3
 
+    guns_edit_form = client.get(f"/components/{legacy_guns_id}/edit")
+    assert b"Guns (existing legacy category)" in guns_edit_form.data
+    edited_guns = post(
+        client,
+        f"/components/{legacy_guns_id}/edit",
+        {
+            "ship_id": "1",
+            "name": "Legacy Gun Updated",
+            "category": "Guns",
+            "size": "3",
+            "grade": "",
+            "spec": "",
+            "quantity": "2",
+        },
+    )
+    assert b"Legacy Gun Updated" in edited_guns.data
+
     post(client, "/admin/logout", {})
     public = client.get("/?category=Missile+Rack")
     assert b"Legacy Rack Updated" in public.data
     assert b"Missile Rack" in public.data
+    public_guns = client.get("/?category=Guns")
+    assert b"Legacy Gun Updated" in public_guns.data
+    assert b"Guns" in public_guns.data
 
 
 def test_public_ship_directory_is_alphabetical_and_ship_page_lists_its_components(client, app):
@@ -448,8 +502,8 @@ def test_public_duplicate_components_are_grouped_with_expandable_sources(client,
     assert response.status_code == 200
     assert b"1 component result" in response.data
     assert b"4 sources" in response.data
-    assert b"Total Qty" in response.data
-    assert b">8<" in response.data
+    assert b"Total Qty" not in response.data
+    assert b'data-quantity="8"' in response.data
     for ship_name, _manufacturer in ships:
         assert ship_name.encode() in response.data
 

@@ -437,6 +437,35 @@
     }
   }
 
+  function formatScu(value) {
+    return new Intl.NumberFormat(undefined, {
+      maximumFractionDigits: 6,
+      useGrouping: true,
+    }).format(value);
+  }
+
+  function updateCscuCalculator(calculator) {
+    if (!calculator) return;
+    const input = calculator.querySelector("[data-cscu-input]");
+    const output = calculator.querySelector("[data-scu-result]");
+    if (!input || !output) return;
+    const raw = input.value.trim();
+    const cscu = Number(raw);
+    if (!raw) {
+      output.value = "0 SCU";
+      output.textContent = "0 SCU";
+      return;
+    }
+    if (!Number.isFinite(cscu) || cscu < 0) {
+      output.value = "Enter a valid amount";
+      output.textContent = "Enter a valid amount";
+      return;
+    }
+    const result = `${formatScu(cscu / 100)} SCU`;
+    output.value = result;
+    output.textContent = result;
+  }
+
   function renumberSourceRows(editor) {
     editor.querySelectorAll("[data-source-row]").forEach((row, index) => {
       const label = row.querySelector(".field > span");
@@ -492,6 +521,15 @@
         writePins([]);
         refreshWatchlistUI();
       }
+      return;
+    }
+    const calculatorClear = event.target.closest("[data-cscu-clear]");
+    if (calculatorClear) {
+      const calculator = calculatorClear.closest("[data-cscu-calculator]");
+      const input = calculator && calculator.querySelector("[data-cscu-input]");
+      if (input) input.value = "";
+      updateCscuCalculator(calculator);
+      if (input) input.focus();
     }
   });
 
@@ -520,7 +558,10 @@
     const notes = event.target.closest("[data-notes-id]");
     if (notes) {
       updatePinMetadata(notes.dataset.notesId, { notes: notes.value.slice(0, 500) });
+      return;
     }
+    const cscuInput = event.target.closest("[data-cscu-input]");
+    if (cscuInput) updateCscuCalculator(cscuInput.closest("[data-cscu-calculator]"));
   });
 
   function enableLiveResults(formSelector, inputSelector, targetSelector, delay, statusSelector) {
@@ -604,6 +645,7 @@
     if (event.key === STORAGE_KEY || event.key === SORT_KEY) refreshWatchlistUI();
   });
   document.querySelectorAll("[data-change-request-form]").forEach(updateChangeRequestContext);
+  document.querySelectorAll("[data-cscu-calculator]").forEach(updateCscuCalculator);
   document.querySelectorAll("[data-source-editor]").forEach(renumberSourceRows);
   refreshWatchlistUI();
 })();
